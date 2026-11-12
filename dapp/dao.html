@@ -7,7 +7,8 @@
 <title>Wei DAO</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20fill%3D%22%230A0A0A%22%2F%3E%3Cpath%20d%3D%22M16%2C16%20V48%20H22%20L32%2C32%20L42%2C48%20H48%20V16%20H42%20V38%20L32%2C22%20L22%2C38%20V16%20Z%22%20fill%3D%22%232D5FE8%22%2F%3E%3C%2Fsvg%3E">
 <link rel="stylesheet" href="theme.css">
-<link rel="preconnect" href="https://gateway.tenderly.co" crossorigin>
+<link rel="preconnect" href="https://mainnet.gateway.tenderly.co" crossorigin>
+<link rel="preconnect" href="https://eth.drpc.org" crossorigin>
 <script>
 // Prevent dark-mode FOUC: apply class before first paint (same contract as index.html)
 try{var d=localStorage.getItem('dark');if(d==='1'||(d===null&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')}catch(_){}
@@ -218,8 +219,14 @@ out of gas and the description is silently never written on-chain.</div>
 const DAO="0x00000007988a79d16cf76b5dc4cf54dc3af24936";
 const NFT="0x0000000000696760e15f265e828db644a0c242eb";
 const CV ="0x0000005260725eee99704957218d4045a50c2051";
-const RPCS=["https://gateway.tenderly.co/public/mainnet","https://eth.drpc.org",
-            "https://eth.merkle.io","https://ethereum-rpc.publicnode.com"];
+// Every entry vetted on an eth_call with Origin: https://wei.domains. merkle is out:
+// it 429s without CORS headers, so the browser reports a preflight failure per call.
+const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
+            "https://mainnet.gateway.tenderly.co","https://eth-mainnet.public.blastapi.io",
+            "https://rpc.mevblocker.io"];
+// eth_getLogs over the DAO's whole history: of the public endpoints only tenderly
+// serves the range. drpc says 10k blocks but refuses 1k; the rest refuse archive logs.
+const LOG_RPCS=["https://mainnet.gateway.tenderly.co"];
 const DEPLOY=24360470;
 const TRANSFER="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const CREATED="0x89a1e7f6c86a8312d520db22d098e313e9013dfe6dc5c4afcdd096e04447c353";
@@ -243,18 +250,33 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const eslink=a=>/^0x[0-9a-fA-F]{40}$/.test(a)?`<a href="https://etherscan.io/address/${a}" target="_blank" rel="noopener">${a.slice(0,10)}…${a.slice(-6)}</a>`:esc(a);
 
 /* ---- transport: a throttled read must never pass as an on-chain zero ---- */
-let cursor=0; const nextRpc=()=>RPCS[cursor++%RPCS.length];
-async function node(reqs,tries=RPCS.length*2){
+// An endpoint that just failed sits out for a while, so one dead host (a reset
+// connection, a 429) doesn't eat a retry slot on every request after it.
+let cursor=0; const benched=new Map();
+function nextRpc(){
+  const now=Date.now();
+  for(let i=0;i<RPCS.length;i++){
+    const u=RPCS[cursor++%RPCS.length];
+    if(!(benched.get(u)>now)) return u;
+  }
+  return RPCS[cursor++%RPCS.length];
+}
+const bench=(u,ms=30000)=>benched.set(u,Date.now()+ms);
+async function post(url,reqs,ms=10000){
+  const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify(reqs),signal:AbortSignal.timeout(ms)});
+  if(!r.ok) throw new Error(url+" HTTP "+r.status);
+  const j=await r.json(); return Array.isArray(j)?j:[j];
+}
+async function node(reqs,tries=RPCS.length+1){
   let last;
   for(let a=0;a<tries;a++){
     const url=nextRpc();
     try{
-      const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(reqs)});
-      if(!r.ok){ last=new Error(url+" HTTP "+r.status); await sleep(250*(a+1)); continue; }
-      const j=await r.json(), arr=Array.isArray(j)?j:[j];
-      if(arr.length===1&&arr[0].error&&arr[0].error.code!==3){ last=new Error(arr[0].error.message); await sleep(300*(a+1)); continue; }
+      const arr=await post(url,reqs);
+      if(arr.length===1&&arr[0].error&&arr[0].error.code!==3){ last=new Error(arr[0].error.message); bench(url); continue; }
       return arr;
-    }catch(e){ last=e; await sleep(250*(a+1)); }
+    }catch(e){ last=e; bench(url); await sleep(150); }
   }
   throw last||new Error("all RPCs failed");
 }
@@ -286,20 +308,20 @@ async function callMany(items,onProgress){
   }
   return {out,failed:todo.length};
 }
-async function getLogs(filter,from,to,depth=0){
-  try{
-    const j=await node([{jsonrpc:"2.0",id:1,method:"eth_getLogs",
-      params:[{...filter,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]}]);
-    if(j[0].error) throw new Error(j[0].error.message);
-    const r=j[0].result||[];
-    if(r.length>=300&&to>from){ const m=Math.floor((from+to)/2);
-      return (await getLogs(filter,from,m,depth+1)).concat(await getLogs(filter,m+1,to,depth+1)); }
-    return r;
-  }catch(e){
-    if(to>from&&depth<24){ const m=Math.floor((from+to)/2);
-      return (await getLogs(filter,from,m,depth+1)).concat(await getLogs(filter,m+1,to,depth+1)); }
-    throw e;
+// Logs get their own walk: the round-robin pool is endpoints that refuse a history-wide
+// range, and bisecting against them never finishes. A failure here costs descriptions
+// and the names scan, never the proposals.
+async function getLogs(filter,from,to){
+  let last;
+  for(const url of LOG_RPCS) for(let t=0;t<2;t++){
+    try{
+      const [r]=await post(url,[{jsonrpc:"2.0",id:1,method:"eth_getLogs",
+        params:[{...filter,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]}],20000);
+      if(r.error) throw new Error(url+": "+r.error.message);
+      return r.result||[];
+    }catch(e){ last=e; await sleep(500); }
   }
+  throw last;
 }
 function log(m,c){ $("log").innerHTML+=`<div class="${c||''}">${m}</div>`; }
 function utf8(hexBody){
@@ -743,7 +765,14 @@ async function connect(p){
   }catch(e){ log("connect failed: "+esc(e.message||e),"bad"); }
 }
 
-async function refreshAll(){ await loadDao(); await loadDescriptions(); await loadProposals(); }
+// Descriptions come from a history-wide log scan, the slowest read on the page; the
+// proposals render without them and pick them up when the scan lands.
+async function withDescriptions(){
+  const d=loadDescriptions().then(()=>{ if(PROPS.length) renderProposals(); });
+  try{ await loadProposals(); }catch(e){ $("plist").innerHTML=`<div class="bad">${esc(e.message)}</div>`; }
+  await d;
+}
+async function refreshAll(){ await loadDao(); await withDescriptions(); }
 $("sweep").onclick=()=>{
   $("f-target").value=NFT; $("f-value").value="0"; $("f-data").value="0x3ccfd60b";
   $("f-desc").value="Withdraw accrued WNS registration fees into DAO";
@@ -769,7 +798,6 @@ window.addEventListener("ethereum#initialized",scanLegacy,{once:true});
 
 (async()=>{
   try{ await loadDao(); }catch(e){ $("dao").innerHTML=`<div class="bad">load failed: ${esc(e.message)}</div>`; }
-  await loadDescriptions();          // descriptions survive a failed <id>.dao.wei mint
-  try{ await loadProposals(); }catch(e){ $("plist").innerHTML=`<div class="bad">${esc(e.message)}</div>`; }
+  await withDescriptions();          // descriptions survive a failed <id>.dao.wei mint
 })();
 </script></body></html>
