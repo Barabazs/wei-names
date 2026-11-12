@@ -224,9 +224,14 @@ const CV ="0x0000005260725eee99704957218d4045a50c2051";
 const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
             "https://mainnet.gateway.tenderly.co","https://eth-mainnet.public.blastapi.io",
             "https://rpc.mevblocker.io"];
-// eth_getLogs over the DAO's whole history: of the public endpoints only tenderly
-// serves the range. drpc says 10k blocks but refuses 1k; the rest refuse archive logs.
-const LOG_RPCS=["https://mainnet.gateway.tenderly.co"];
+// eth_getLogs over the DAO's whole history. Each of these served the full range (address
+// filter, deploy block to latest) with a CORS header; mevblocker's paths share a backend
+// that intermittently answers "service temporarily unavailable", so it gets several goes.
+// Then the connected wallet's own node. drpc says 10k blocks but refuses 1k; flashbots
+// says 100k but refuses that too; publicnode, blastapi, 1rpc, blockrazor refuse outright.
+const LOG_RPCS=["https://mainnet.gateway.tenderly.co","https://rpc.mevblocker.io",
+                "https://rpc.mevblocker.io/fast","https://rpc.mevblocker.io/noreverts",
+                "https://rpc.mevblocker.io/fullprivacy","https://rpc.mevblocker.io"];
 const DEPLOY=24360470;
 const TRANSFER="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const CREATED="0x89a1e7f6c86a8312d520db22d098e313e9013dfe6dc5c4afcdd096e04447c353";
@@ -308,18 +313,29 @@ async function callMany(items,onProgress){
   }
   return {out,failed:todo.length};
 }
-// Logs get their own walk: the round-robin pool is endpoints that refuse a history-wide
-// range, and bisecting against them never finishes. A failure here costs descriptions
-// and the names scan, never the proposals.
+// Logs get their own walk: most of the read pool refuses a history-wide range, and
+// bisecting against them never finishes. A failure here costs descriptions and the
+// names scan, never the proposals.
+async function logsAt(url,filter,from,to){
+  const [r]=await post(url,[{jsonrpc:"2.0",id:1,method:"eth_getLogs",
+    params:[{...filter,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]}],20000);
+  if(r.error) throw new Error(url+": "+r.error.message);
+  if(!Array.isArray(r.result)) throw new Error(url+": no result");
+  return r.result;
+}
+let logWinner=null;   // whichever endpoint served last, tried first next time
 async function getLogs(filter,from,to){
   let last;
-  for(const url of LOG_RPCS) for(let t=0;t<2;t++){
+  for(const url of [...new Set([logWinner,...LOG_RPCS].filter(Boolean))]){
+    try{ const r=await logsAt(url,filter,from,to); logWinner=url; return r; }
+    catch(e){ last=e; await sleep(200); }
+  }
+  if(PROV){
     try{
-      const [r]=await post(url,[{jsonrpc:"2.0",id:1,method:"eth_getLogs",
-        params:[{...filter,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]}],20000);
-      if(r.error) throw new Error(url+": "+r.error.message);
-      return r.result||[];
-    }catch(e){ last=e; await sleep(500); }
+      const r=await PROV.request({method:"eth_getLogs",params:[{...filter,
+        fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]});
+      if(Array.isArray(r)) return r;
+    }catch(e){ last=e; }
   }
   throw last;
 }
