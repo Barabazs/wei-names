@@ -8,7 +8,7 @@
 const RPCS = [
   'https://ethereum-rpc.publicnode.com',
   'https://eth.drpc.org',
-  'https://eth.merkle.io',
+  'https://rpc.mevblocker.io',
   'https://mainnet.gateway.tenderly.co',
   'https://eth-mainnet.public.blastapi.io'
 ];
@@ -249,6 +249,10 @@ async function connectWithWallet(walletKey, options = {}) {
       if (_walletConnectProvider) { try { await _walletConnectProvider.disconnect?.(); } catch (e) {} _walletConnectProvider = null; }
       _walletConnectProvider = await WCProvider.init({ projectId: WC_PROJECT_ID, chains: [1], showQrModal: !silent, rpcMap: { 1: 'https://ethereum-rpc.publicnode.com' }, metadata: { name: _appName, description: _appName, url: window.location.origin, icons: [] } });
       myWc = _walletConnectProvider;
+      // init() restores a saved session if there is one. With none (expired after a week idle,
+      // or ended from the wallet), enable() would wait forever: say so now, as a permanent
+      // failure that forgets the saved wallet, instead of ten seconds of "…" on every load.
+      if (silent && !myWc.session) throw new Error('WalletConnect session not available');
       // WalletConnect v2 emits 'disconnect'/'session_delete' when the session is
       // ended from the wallet side or expires — it does NOT emit accountsChanged:[]
       // then, so without this the dapp lingers in a ghost-connected state. The
@@ -261,9 +265,7 @@ async function connectWithWallet(walletKey, options = {}) {
       // path must not await it bare (see the _isConnecting note above).
       if (silent) await _withTimeout(_walletConnectProvider.enable(), 10000, 'walletconnect');
       else await _walletConnectProvider.enable();
-      walletProvider = _walletConnectProvider;
-      _isWalletConnect = true;
-      _wcDeepLink = readWalletConnectRedirect(_walletConnectProvider.session?.peer?.metadata);
+      walletProvider = myWc; // _isWalletConnect is set once this attempt is known to still own the state
     } else if (walletKey.startsWith('eip6963_')) {
       const uuid = walletKey.replace('eip6963_', '');
       walletProvider = eip6963Providers.get(uuid)?.provider;
@@ -324,8 +326,14 @@ async function connectWithWallet(walletKey, options = {}) {
     const sg = silent ? await _withTimeout(bp.getSigner(), 8000, 'getSigner') : await bp.getSigner();
     const addr = silent ? await _withTimeout(sg.getAddress(), 8000, 'getAddress') : await sg.getAddress();
     // A manual connect started while this silent one was still resolving owns the
-    // wallet state now — drop this result rather than overwriting theirs.
-    if (superseded()) return;
+    // wallet state now — drop this result rather than overwriting theirs. That includes the
+    // WalletConnect flags (set here, not when enable() resolved, for exactly this reason) and
+    // our session itself: left alive behind their wallet, its end would disconnect them.
+    if (superseded()) {
+      if (myWc) { try { Promise.resolve(myWc.disconnect()).catch(() => {}); } catch (_) {} if (_walletConnectProvider === myWc) _walletConnectProvider = null; }
+      return;
+    }
+    if (myWc) { _isWalletConnect = true; _wcDeepLink = readWalletConnectRedirect(myWc.session?.peer?.metadata); }
     _walletProvider = bp;
     _signer = sg;
     _connectedAddress = addr;
@@ -430,15 +438,18 @@ async function connectWithWallet(walletKey, options = {}) {
         try { Promise.resolve(myWc.disconnect()).catch(() => {}); } catch (_) {}
         if (_walletConnectProvider === myWc) _walletConnectProvider = null;
       }
-      // A WC auto-connect sets _isWalletConnect before enable() resolves; leaving
-      // it true after a failed/timed-out restore makes wcTransaction() deep-link
-      // into a wallet app that was never connected.
-      if (!_connectedAddress) { _isWalletConnect = false; _wcDeepLink = null; updateWcBanner(); }
-      // Only clear saved wallet for permanent failures (wallet not found),
-      // not transient ones (provider not ready, RPC timeout)
-      const errMsg = error?.message || '';
-      if (/not found|not available|unavailable/i.test(errMsg)) {
-        try { localStorage.removeItem('zfi_wallet'); localStorage.removeItem('zfi_wallet_name'); } catch (_) {}
+      // Leaving the WalletConnect flags set after a failed restore would make wcTransaction()
+      // deep-link into a wallet app that was never connected. But a superseded attempt owns
+      // nothing: the manual connect that replaced it decides the flags and the saved wallet —
+      // wiping zfi_wallet here could erase the one it just saved.
+      if (!superseded()) {
+        if (!_connectedAddress) { _isWalletConnect = false; _wcDeepLink = null; updateWcBanner(); }
+        // Only clear saved wallet for permanent failures (wallet not found),
+        // not transient ones (provider not ready, RPC timeout)
+        const errMsg = error?.message || '';
+        if (/not found|not available|unavailable/i.test(errMsg)) {
+          try { localStorage.removeItem('zfi_wallet'); localStorage.removeItem('zfi_wallet_name'); } catch (_) {}
+        }
       }
     } else {
       const msg = error?.message || '';
