@@ -45,7 +45,7 @@ h2{font-size:10px;font-weight:400;letter-spacing:0.14em;text-transform:uppercase
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 32px}
 .stat .k{color:var(--fg-dim);font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase}
 .stat .v{font-size:23px;margin-top:8px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1}
-.meta{display:flex;gap:28px;flex-wrap:wrap;margin-top:26px;font-size:11px;color:var(--fg-dim);
+.meta{display:flex;gap:10px 28px;flex-wrap:wrap;margin-top:26px;font-size:11px;color:var(--fg-dim);
       letter-spacing:0.04em}
 .meta b{font-weight:400;color:var(--fg);font-variant-numeric:tabular-nums}
 
@@ -149,13 +149,20 @@ footer a{text-decoration:none}
 #acct .addr{color:var(--fg-muted);margin-left:8px;font-variant-numeric:tabular-nums}
 
 @media (max-width:560px){
-  body{padding:44px 16px 20px}
+  body{padding:44px 16px 84px}
   .grid{grid-template-columns:1fr 1fr;gap:16px}
   .stat .v{font-size:19px}
   .bars{grid-template-columns:62px 1fr;row-gap:2px}
   .bars > span:last-child{grid-column:2;text-align:left}
   .top nav{width:100%;margin-left:0;gap:14px}
+  /* The column is the whole screen here, so a fixed chip sat on top of whatever
+     scrolled under it. Park it at the foot of the page, as the lander does. */
+  body{position:relative}
+  .dark-toggle{position:absolute;bottom:28px;right:16px}
 }
+/* Even lines for titles, no lone last word in prose */
+h1,h2{text-wrap:balance}
+.lede,.note,.pnote,.pdesc{text-wrap:pretty}
 </style>
 </head>
 <body>
@@ -171,10 +178,11 @@ footer a{text-decoration:none}
 <div class="lede">Proposals, conviction, vetoes and treasury, read live from Ethereum.</div>
 
 <section><h2>Treasury</h2>
-<div class="grid" id="dao"><div class="dim">loading…</div></div>
-<div class="meta" id="knobs"></div>
-<div class="row" style="margin-top:26px"><button class="sec sm" id="sweep" style="display:none"></button></div>
-<div class="note" id="roles" style="margin-top:16px"></div></section>
+<!-- Placeholders the same shape as what loadDao() paints, so the sections below don't jump when it lands -->
+<div class="grid" id="dao"><div class="stat"><div class="k">in treasury</div><div class="v dim">—</div></div><div class="stat"><div class="k">withdrawable</div><div class="v dim">—</div></div><div class="stat"><div class="k">combined</div><div class="v dim">—</div></div></div>
+<div class="meta" id="knobs"><span>weight to pass <b class="dim">—</b></span><span>proposal fee <b class="dim">—</b></span><span>timelock <b class="dim">—</b></span><span>proposals <b class="dim">—</b></span></div>
+<div class="row" style="margin-top:26px"><button class="sec sm" id="sweep" style="visibility:hidden" tabindex="-1">Draft withdrawal</button></div>
+<div class="note" id="roles" style="margin-top:16px"><b>Withdrawable</b> is registration fees sitting in WNS <a href="https://etherscan.io/address/0x0000000000696760E15f265e828DB644A0c242EB" target="_blank" rel="noopener">0x00000000…c242eb</a>, which the DAO owns. They are not spendable until a proposal calls <code>withdraw()</code> on it — only then do they become treasury. <b>In treasury</b> is what proposals can spend right now.<br>veto role <span class="dim">…</span> · exec role <span class="dim">…</span> — either may call <code>veto(id)</code> directly; everyone else goes through ConvictionVeto <a href="https://etherscan.io/address/0x0000005260725EEe99704957218d4045A50C2051" target="_blank" rel="noopener">0x00000052…0c2051</a>.</div></section>
 
 <section><h2>Your names</h2>
 <div class="row" id="wbtns"><button id="connect">Connect wallet</button><span id="acct" class="dim">not connected</span></div>
@@ -202,7 +210,7 @@ so they survive even where a proposal's <code>&lt;id&gt;.dao.wei</code> record w
 <label>description<textarea id="f-desc" rows="2" maxlength="2048" placeholder="what this does, and why"></textarea></label>
 <div class="row"><button id="propose" disabled>Propose</button></div>
 <div class="note" style="margin-top:14px">The fee is read from <code>proposalFee()</code> and sent with the call.
-Gas is floored well above the estimate on purpose: <code>propose</code> mints <code>&lt;id&gt;.dao.wei</code>
+Gas is set well above the estimate on purpose, more for a longer description: <code>propose</code> mints <code>&lt;id&gt;.dao.wei</code>
 in a swallowed <code>try/catch</code>, so <code>eth_estimateGas</code> returns a limit where that naming runs
 out of gas and the description is silently never written on-chain.</div>
 <div id="log" role="log" aria-live="polite"></div></section>
@@ -236,8 +244,13 @@ const DEPLOY=24360470;
 const TRANSFER="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const CREATED="0x89a1e7f6c86a8312d520db22d098e313e9013dfe6dc5c4afcdd096e04447c353";
 const ALPHA_FALLBACK=999998853923940000n, SCALE=10n**18n;
-// Naming costs ~470k inside propose(); the estimator omits it because its failure is swallowed.
-const PROPOSE_GAS_FLOOR=700000n;
+// Naming costs ~470k inside propose(), plus the description's storage (~22k a 32-byte word);
+// the estimator omits it because its failure is swallowed. So propose sends its estimate plus
+// this much. A flat 700k floor named a 300-byte description and silently dropped a 500-byte one;
+// estimate + 400k + 25k a word named every case on a fork, from 4 bytes to the 2048 allowed.
+const proposeNamingGas=desc=>400000n+25000n*BigInt(Math.ceil(new TextEncoder().encode(desc).length/32));
+// WeiDAO's own first block: its logs (ProposalCreated) start here, 1.1M blocks after NameNFT's.
+const DAO_DEPLOY=25469169;
 const S={proposalCount:"da35c664",proposals:"013cf08b",convictionOf:"cea5b888",threshold:"42cde4e8",
          alpha:"db1d0fd5",executionDelay:"8b257989",proposalFee:"c27cabb5",weightOf:"0767d178",
          supportOf:"02cd4a68",support:"9be56c67",unsupport:"84a1faba",execute:"fe0d94c1",
@@ -258,12 +271,18 @@ const eslink=a=>/^0x[0-9a-fA-F]{40}$/.test(a)?`<a href="https://etherscan.io/add
 // An endpoint that just failed sits out for a while, so one dead host (a reset
 // connection, a 429) doesn't eat a retry slot on every request after it.
 let cursor=0; const benched=new Map();
-function nextRpc(){
+// drpc's free tier answers a JSON-RPC batch of more than 3 with HTTP 400 ("Batch of more than 3
+// requests are not allowed"), so callMany's batches of 25 spent a round trip there, failed and
+// benched it, on every page load. A batch only goes to an endpoint that takes its size.
+const BATCH_CAP={"https://eth.drpc.org":3};
+const takes=(u,n)=>!(BATCH_CAP[u]<n);
+function nextRpc(n=1){
   const now=Date.now();
   for(let i=0;i<RPCS.length;i++){
     const u=RPCS[cursor++%RPCS.length];
-    if(!(benched.get(u)>now)) return u;
+    if(!(benched.get(u)>now)&&takes(u,n)) return u;
   }
+  for(let i=0;i<RPCS.length;i++){ const u=RPCS[cursor++%RPCS.length]; if(takes(u,n)) return u; }
   return RPCS[cursor++%RPCS.length];
 }
 const bench=(u,ms=30000)=>benched.set(u,Date.now()+ms);
@@ -276,7 +295,7 @@ async function post(url,reqs,ms=10000){
 async function node(reqs,tries=RPCS.length+1){
   let last;
   for(let a=0;a<tries;a++){
-    const url=nextRpc();
+    const url=nextRpc(reqs.length);
     try{
       const arr=await post(url,reqs);
       if(arr.length===1&&arr[0].error&&arr[0].error.code!==3){ last=new Error(arr[0].error.message); bench(url); continue; }
@@ -285,8 +304,11 @@ async function node(reqs,tries=RPCS.length+1){
   }
   throw last||new Error("all RPCs failed");
 }
+// The wallet, with a deadline: one that stops answering must not wedge every read (or SENDING).
+const ask=(method,params,ms=8000)=>Promise.race([PROV.request({method,params}),
+  sleep(ms).then(()=>{ throw new Error("the wallet didn't answer "+method); })]);
 async function one(method,params){
-  if(PROV){ try{ return await PROV.request({method,params}); }catch(_){} }
+  if(PROV){ try{ return await ask(method,params); }catch(_){} }
   const j=await node([{jsonrpc:"2.0",id:1,method,params}]);
   if(j[0].error) throw new Error(j[0].error.message);
   return j[0].result;
@@ -326,7 +348,10 @@ async function logsAt(url,filter,from,to){
 let logWinner=null;   // whichever endpoint served last, tried first next time
 async function getLogs(filter,from,to){
   let last;
-  for(const url of [...new Set([logWinner,...LOG_RPCS].filter(Boolean))]){
+  // The winner moves to the front; repeats in LOG_RPCS (mevblocker's extra goes) stay put.
+  const order=LOG_RPCS.slice(), w=order.indexOf(logWinner);
+  if(w>0){ order.splice(w,1); order.unshift(logWinner); }
+  for(const url of order){
     try{ const r=await logsAt(url,filter,from,to); logWinner=url; return r; }
     catch(e){ last=e; await sleep(200); }
   }
@@ -339,7 +364,7 @@ async function getLogs(filter,from,to){
   }
   throw last;
 }
-function log(m,c){ $("log").innerHTML+=`<div class="${c||''}">${m}</div>`; }
+function log(m,c){ $("log").insertAdjacentHTML("beforeend",`<div class="${c||''}">${m}</div>`); }
 function utf8(hexBody){
   return new TextDecoder().decode(Uint8Array.from(hexBody.match(/../g)||[],x=>parseInt(x,16))); }
 function readString(raw,w){
@@ -375,19 +400,39 @@ let DESCS={};   // id -> {desc, who, tx}   recovered from ProposalCreated logs
 async function loadDescriptions(){
   try{
     const latest=Number(BigInt(await one("eth_blockNumber",[])));
-    const ls=await getLogs({address:DAO,topics:[CREATED]},DEPLOY,latest);
+    const ls=await getLogs({address:DAO,topics:[CREATED]},DAO_DEPLOY,latest);
     for(const l of ls){
       const id=Number(BigInt(l.topics[1])), raw=l.data.slice(2);
       DESCS[id]={desc:readString(raw,3),who:readString(raw,4),tx:l.transactionHash};
     }
   }catch(e){ console.warn("description recovery failed",e); }
 }
+// Several reads in one JSON-RPC batch to one endpoint, retried whole while any item failed —
+// ten separate requests were ten chances at a public endpoint's rate limit.
+async function batch(reqs,tries=3){
+  let last;
+  for(let a=0;a<tries;a++){
+    try{
+      const j=await node(reqs.map(([method,params],id)=>({jsonrpc:"2.0",id,method,params})));
+      const byId=new Map(j.map(r=>[r.id,r]));
+      const out=reqs.map((_,i)=>byId.get(i));
+      const bad=out.find(r=>!r||r.error||r.result===undefined);
+      if(!bad) return out.map(r=>r.result);
+      last=new Error(bad&&bad.error?bad.error.message:"incomplete batch answer");
+    }catch(e){ last=e; }
+    await sleep(300);
+  }
+  throw last;
+}
 async function loadDao(){
-  const [cnt,th,al,dl,fee,vr,ex,bal,nftBal,nftOwner]=await Promise.all([
-    call(DAO,"0x"+S.proposalCount), call(DAO,"0x"+S.threshold), call(DAO,"0x"+S.alpha),
-    call(DAO,"0x"+S.executionDelay), call(DAO,"0x"+S.proposalFee), call(DAO,"0x"+S.vetoer),
-    call(DAO,"0x"+S.executor), one("eth_getBalance",[DAO,"latest"]),
-    one("eth_getBalance",[NFT,"latest"]), call(NFT,"0x"+S.owner)]);
+  const c=(to,sel)=>["eth_call",[{to,data:"0x"+sel},"latest"]];
+  const reqs=[c(DAO,S.proposalCount), c(DAO,S.threshold), c(DAO,S.alpha), c(DAO,S.executionDelay),
+    c(DAO,S.proposalFee), c(DAO,S.vetoer), c(DAO,S.executor), ["eth_getBalance",[DAO,"latest"]],
+    ["eth_getBalance",[NFT,"latest"]], c(NFT,S.owner)];
+  // Connected, these go through the wallet's own node, which has seen the tx it just confirmed
+  // (the refresh after a send); otherwise one batch to the public endpoints.
+  const [cnt,th,al,dl,fee,vr,ex,bal,nftBal,nftOwner]=PROV
+    ? await Promise.all(reqs.map(([m,params])=>one(m,params))) : await batch(reqs);
   // Registration fees accrue inside NameNFT, not the DAO. They are the DAO's only
   // while it owns the registrar, and they move only when withdraw() is executed —
   // so hold them apart from the balance the DAO can actually spend today.
@@ -403,7 +448,7 @@ async function loadDao(){
     ["withdrawable",(DAOINFO.withdrawable>0n?'<span class="ok">':"<span>")+fmt(DAOINFO.withdrawable)+" ETH</span>"],
     ["combined",fmt(DAOINFO.bal+DAOINFO.withdrawable)+" ETH"]
   ].map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-  $("knobs").innerHTML=`<span>weight to pass <b>${fmt(Wreq,6)} ETH</b></span>`
+  $("knobs").innerHTML=`<span title="Conviction tends to weight ÷ (1 − α) and passes once that is over the threshold: at exactly this weight it never gets there, and the more above it, the sooner">weight to pass <b>&gt; ${fmt(Wreq,6)} ETH</b></span>`
     +`<span>proposal fee <b>${fmt(DAOINFO.fee,4)} ETH</b></span>`
     +`<span>timelock <b>${(DAOINFO.delay/86400).toFixed(0)} d</b></span>`
     +`<span>proposals <b>${DAOINFO.count}</b></span>`;
@@ -417,11 +462,12 @@ async function loadDao(){
     +`<br>veto role ${eslink(DAOINFO.vetoer)} · exec role ${eslink(DAOINFO.executor)}`
     +` — either may call <code>veto(id)</code> directly; everyone else goes through ConvictionVeto ${eslink(CV)}.`;
   $("sweep").style.display=DAOINFO.withdrawable>0n?"":"none";
+  $("sweep").style.visibility=""; $("sweep").tabIndex=0;
   $("sweep").textContent=`Draft withdrawal of ${fmt(DAOINFO.withdrawable)} ETH`;
   $("propose").disabled=!ACCT;
 }
 async function loadProposals(){
-  if(!DAOINFO) return;
+  if(!DAOINFO) throw new Error("the DAO's state didn't load — Refresh to try again");
   const n=DAOINFO.count, reqs=[];
   for(let i=1;i<=n;i++){
     reqs.push({to:DAO,data:"0x"+S.proposals+h(i)});
@@ -457,20 +503,24 @@ const REVERTS={"0xacfdb444":"the target call reverts","0x6fed7d85":"still timelo
 async function probeExecutable(){
   const cands=PROPS.filter(p=>!p.unread&&!p.executed&&!p.vetoed&&p.C!==undefined
     &&p.C>=DAOINFO.T&&Date.now()/1000>=p.created+DAOINFO.delay);
-  for(const p of cands){
+  await Promise.all(cands.map(async p=>{
+    // Sending more than the treasury holds reverts ExecutionFailed too, the same as a broken
+    // target — but that one is only waiting for funds (a withdraw(), say), not unexecutable.
+    p.short=p.value>DAOINFO.bal;
+    if(p.short){ p.stuck=null; return; }
     try{
       const j=await node([{jsonrpc:"2.0",id:1,method:"eth_call",params:[
         {from:"0x000000000000000000000000000000000000dEaD",to:DAO,data:"0x"+S.execute+h(p.id)},"latest"]}]);
       p.stuck=j[0].error?(REVERTS[j[0].error.data]||"reverts on execute"):null;
     }catch(_){ p.stuck=undefined; }   // could not ask — claim nothing
-  }
+  }));
 }
 function statusOf(p){
   if(p.stuck) return ["stuck","passed \u00b7 cannot execute"];
   if(p.executed) return ["exec","executed"];
   if(p.vetoed)   return ["veto","vetoed"];
   if(p.C!==undefined&&p.C>=DAOINFO.T)
-    return ["ready",Date.now()/1000<p.created+DAOINFO.delay?"passed — timelocked":"passed — executable"];
+    return ["ready",Date.now()/1000<p.created+DAOINFO.delay?"passed — timelocked":p.short?"passed — needs funds":"passed — executable"];
   return ["open","open"];
 }
 function renderProposals(){
@@ -498,7 +548,7 @@ function card(p){
     const T=DAOINFO.T;
     const pct=(x)=>x===undefined?0:Math.min(100,Number(x*10000n/T)/100);
     // 0.013% of the threshold is not "0.0%" — it is a position that exists.
-    const pctTxt=(x)=>{const v=pct(x); return v>0&&v<0.1?"&lt;0.1%":v.toFixed(1)+"%";};
+    const pctTxt=(x)=>{ if(x===undefined) return "—"; const v=pct(x); return v>0&&v<0.1?"&lt;0.1%":v.toFixed(1)+"%";};
     // Does a constant weight's conviction asymptote clear the bar at all?
     const AL=DAOINFO.alpha;
     const reaches=(W)=>W!==undefined&&W>0n&&W*SCALE/(SCALE-AL)>T;
@@ -511,7 +561,7 @@ function card(p){
     // ConvictionVeto can only veto while it holds the veto role
     const vetoReady=p.V!==undefined&&p.V>=T&&DAOINFO.vetoer.toLowerCase()===CV.toLowerCase();
     const stalled=d===null&&!passedNow&&p.C!==undefined&&!closed;
-    const ready=passedNow&&Date.now()/1000>=tl;
+    const ready=passedNow&&Date.now()/1000>=tl&&!p.stuck&&!p.short;
     return `<div class="prop${closed?' closed':''}">
       <div class="phead"><span class="pid">${p.id}</span>
         <span class="pill ${cls}">${label}</span>
@@ -531,6 +581,8 @@ function card(p){
         at ${fmt(p.VW,6)} ETH of backing &mdash; it needs ${fmt(T*(SCALE-AL)/SCALE-p.VW,6)} ETH more</span></div>`:''}
       ${closed?'':`<div class="pnote">${
         stalled?'<span class="warn">will never reach the threshold at this weight</span>'
+        :p.short?`<span class="warn">passed, but it sends ${fmt(p.value)} ETH and the treasury holds ${fmt(DAOINFO.bal)} — executable once it has the funds</span>`
+        :p.stuck?''
         :eta?`executable ${new Date(eta*1000).toISOString().slice(0,16).replace("T"," ")} UTC`:''
       }${vetoReady?' · <span class="bad">vetoable now</span>':''}</div>`}
       ${closed?'':`<div class="pacts">
@@ -575,10 +627,11 @@ async function scanNames(force){
                           reqs.push({to:DAO,data:"0x"+S.weightOf+h(id)}); }
     const {out}=await callMany(reqs,(d,t)=>{ if(live()) $("pf").textContent=`reading names… ${d}/${t}`; });
     if(!live()) return;
+    let unread=0;
     NAMES=[];
     ids.forEach((id,i)=>{
       const o=out[i*3], r=out[i*3+1], w=out[i*3+2];
-      if(o===null||r===null||w===null) return;
+      if(o===null||r===null||w===null){ unread++; return; }
       if(("0x"+o.slice(-40)).toLowerCase()!==me) return;
       const raw=r.slice(2);
       const off=Number(BigInt("0x"+raw.slice(0,64)))*2, len=Number(BigInt("0x"+raw.slice(off,off+64)));
@@ -589,7 +642,8 @@ async function scanNames(force){
     const tot=NAMES.reduce((a,n)=>a+n.w,0n);
     const Wreq=DAOINFO?DAOINFO.T*(SCALE-DAOINFO.alpha)/SCALE:0n;
     $("pf").innerHTML=`<span class="ok">${NAMES.length} weighted names · ${fmt(tot,6)} ETH</span>`+
-      (Wreq&&tot<Wreq?` <span class="warn">— below the ${fmt(Wreq,6)} ETH a proposal needs, so these alone converge short of the bar</span>`:``);
+      (unread?` <span class="warn">— ${unread} name${unread===1?"":"s"} couldn't be read (a busy RPC): Rescan before relying on this</span>`:``)+
+      (!unread&&Wreq&&tot<Wreq?` <span class="warn">— below the ${fmt(Wreq,6)} ETH a proposal needs, so these alone converge short of the bar</span>`:``);
     renderNames();
   }catch(e){ if(live()) $("pf").innerHTML=`<span class="bad">scan failed: ${esc(e.message)}</span>`; }
 }
@@ -622,18 +676,18 @@ window.stageRoleVeto=(id)=>{
   log(`staged veto(${id}) for the role holder — copy below`,"dim");
 };
 let SENDING=false;
-async function send(to,data,value,gasFloor,label){
+async function send(to,data,value,extraGas,label){
   if(!PROV||!ACCT) return log("connect a wallet first","bad");
   // One transaction in flight: a second click would estimate against pre-inclusion state.
   if(SENDING) return log("a transaction is still pending — wait for it to confirm","warn");
   SENDING=true;
   try{
-    if(BigInt(await PROV.request({method:"eth_chainId"}))!==1n) return log("wallet is not on Ethereum mainnet","bad");
+    if(BigInt(await ask("eth_chainId",[]))!==1n) return log("wallet is not on Ethereum mainnet","bad");
     let gas;
-    try{ gas=BigInt(await PROV.request({method:"eth_estimateGas",
-      params:[{from:ACCT,to,data,...(value?{value:"0x"+value.toString(16)}:{})}]})); }
+    try{ gas=BigInt(await ask("eth_estimateGas",
+      [{from:ACCT,to,data,...(value?{value:"0x"+value.toString(16)}:{})}])); }
     catch(e){ return log("estimate failed: "+esc(e.data?.message||e.message),"bad"); }
-    const sendGas=gasFloor&&gas<gasFloor?gasFloor:gas*12n/10n;
+    const sendGas=extraGas?gas+extraGas:gas*12n/10n;
     log(`${label}: estimate ${gas.toLocaleString()} → sending with ${sendGas.toLocaleString()}`,"dim");
     const tx=await PROV.request({method:"eth_sendTransaction",params:[{from:ACCT,to,data,
       ...(value?{value:"0x"+value.toString(16)}:{}),gas:"0x"+sendGas.toString(16)}]});
@@ -645,7 +699,8 @@ async function send(to,data,value,gasFloor,label){
       try{ r=await PROV.request({method:"eth_getTransactionReceipt",params:[tx]}); }catch(_){}
     }
     if(!r) return log("no receipt after 10 min — check etherscan","warn");
-    if(BigInt(r.status)===1n){ log("confirmed ✓","ok"); await refreshAll(); }
+    // Free the next send before refreshing: the refresh includes a history-wide log scan.
+    if(BigInt(r.status)===1n){ log("confirmed ✓","ok"); SENDING=false; await refreshAll(); }
     else log("reverted","bad");
   }catch(e){ log("failed: "+esc(e.data?.message||e.message||e),"bad"); }
   finally{ SENDING=false; }
@@ -696,7 +751,7 @@ $("propose").onclick=async()=>{
   const wei=BigInt(i||"0")*SCALE+BigInt(f.padEnd(18,"0"));
   const data=encodePropose(target,wei,d,desc);
   stage(DAO,data,"propose(…)");
-  await send(DAO,data,DAOINFO.fee,PROPOSE_GAS_FLOOR,"propose");
+  await send(DAO,data,DAOINFO.fee,proposeNamingGas(desc),"propose");
 };
 
 /* ---------------- wallet ---------------- */
@@ -735,10 +790,12 @@ function renderWallets(){
   if(!WALLETS.length) pick.classList.remove("show");
   const bits=[];
   if(!WALLETS.length){
-    bits.push('<span class="bad">No wallet detected.</span>');
+    bits.push('<span class="bad">No wallet detected.</span> Open this page in your wallet app’s browser, or add a browser wallet to vote and propose.');
     if(!window.isSecureContext) bits.push('Not a secure context — serve over http://localhost or https.');
     if(location.protocol==="file:") bits.push('Opened as file://; extensions do not inject there.');
-    bits.push('Served from a remote container? Open the forwarded port in your own browser.');
+    // A dev setup's blind spot, not a visitor's: only where the page is plausibly being served from one.
+    if(/^(localhost|127\.0\.0\.1|\[::1\])$|\.(app\.)?github\.dev$|\.gitpod\.io$/.test(location.hostname))
+      bits.push('Served from a remote container? Open the forwarded port in your own browser.');
   }
   // With a wallet present the list is noise; the picker names them when it matters.
   $("wdiag").innerHTML=bits.join("<br>");
@@ -788,7 +845,20 @@ async function withDescriptions(){
   try{ await loadProposals(); }catch(e){ $("plist").innerHTML=`<div class="bad">${esc(e.message)}</div>`; }
   await d;
 }
-async function refreshAll(){ await loadDao(); await withDescriptions(); }
+// One refresh at a time; a call that lands mid-refresh (a tx confirming, a click) gets one
+// more full pass afterwards instead of a second, overlapping one painting older state last.
+let REFRESHING=null, REFRESH_AGAIN=false;
+function refreshAll(){
+  if(REFRESHING){ REFRESH_AGAIN=true; return REFRESHING; }
+  REFRESHING=(async()=>{
+    do{
+      REFRESH_AGAIN=false;
+      try{ await loadDao(); }catch(e){ $("dao").innerHTML=`<div class="bad">load failed: ${esc(e.message)}</div>`; }
+      await withDescriptions();
+    }while(REFRESH_AGAIN);
+  })().finally(()=>{ REFRESHING=null; });
+  return REFRESHING;
+}
 $("sweep").onclick=()=>{
   $("f-target").value=NFT; $("f-value").value="0"; $("f-data").value="0x3ccfd60b";
   $("f-desc").value="Withdraw accrued WNS registration fees into DAO";
@@ -812,8 +882,8 @@ window.addEventListener("ethereum#initialized",scanLegacy,{once:true});
 [100,300,800,1500,3000].forEach(ms=>setTimeout(()=>{
   window.dispatchEvent(new Event("eip6963:requestProvider")); scanLegacy(); },ms));
 
+// The bootstrap stays the last async IIFE in this script: dao.test.mjs runs everything before it.
 (async()=>{
-  try{ await loadDao(); }catch(e){ $("dao").innerHTML=`<div class="bad">load failed: ${esc(e.message)}</div>`; }
-  await withDescriptions();          // descriptions survive a failed <id>.dao.wei mint
+  await refreshAll();   // descriptions come from logs, so they survive a failed <id>.dao.wei mint
 })();
 </script></body></html>

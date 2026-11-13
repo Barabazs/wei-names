@@ -113,10 +113,15 @@ const { ctx, run } = sandbox();
 
 // ── the reason this file exists
 {
-  ok('propose gas is floored above the ~470k the naming costs',
-     run(`PROPOSE_GAS_FLOOR`) >= 600000n, 'floor=' + run(`PROPOSE_GAS_FLOOR`));
-  ok('the floor is documented next to the constant',
+  // Measured on a fork: estimate + this named every proposal from 4 to 2048 description bytes,
+  // where a flat 700k floor dropped the naming of anything past ~340 bytes.
+  ok('propose adds at least the ~470k the naming costs, even for an empty description',
+     run(`proposeNamingGas('')`) >= 400000n, 'extra=' + run(`proposeNamingGas('')`));
+  eq('… and ~25k more for each 32-byte word of description', run(`proposeNamingGas('x'.repeat(2048))`) - run(`proposeNamingGas('')`), 64n * 25000n);
+  eq('… counted in bytes, not characters', run(`proposeNamingGas('é'.repeat(32))`), run(`proposeNamingGas('x'.repeat(64))`));
+  ok('the allowance is documented next to it',
      /estimator omits it because its failure is swallowed/.test(JS));
+  ok('send() adds it to the estimate rather than flooring', /const sendGas=extraGas\?gas\+extraGas:gas\*12n\/10n/.test(JS));
 }
 
 // ── withdrawable is only the DAO's while it owns the registrar
