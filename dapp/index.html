@@ -971,6 +971,18 @@ body:has(#nameInput:placeholder-shown) #commitBtn:disabled { display: none; }
   .send-form { padding: 14px; }
   .tagline { margin-bottom: 24px; }
 }
+/* Line breaks: centred blocks and titles wrap into even lines, prose never leaves one
+   word alone on its last line (the tagline's "ether" did on phones). A post's byline
+   stays with the last word of its title instead of starting a line of its own. */
+h3, .featured-title, .posts-home-note, .posts-home-list a, .roll-forever, footer { text-wrap: balance; }
+.tagline, .panel-intro, .status, .post-hint, .names-note, .roll-note, .manage-hint, .featured-desc,
+.dao-banner-text, .warn-box, .ok-box, .names-alert { text-wrap: pretty; }
+.posts-home-list a span { white-space: nowrap; }
+/* The free name's ".id.wei" sits on the field's line, as ".wei" does on the main box:
+   the line belongs to the row, and focus thickens it without moving anything below. */
+.free-panel .free-input-wrap { border-bottom: 1px solid var(--free-accent); }
+.free-panel .free-input-wrap:focus-within { box-shadow: 0 1px 0 var(--free-accent); }
+.free-panel .free-input-wrap input, .free-panel .free-input-wrap input:focus { border-bottom: 0; margin-bottom: 0; }
 
 </style>
 </head>
@@ -1213,6 +1225,21 @@ try{if(localStorage.getItem('wns_dao_banner')==='1'){var _db=document.getElement
   <div class="posts-home-list" id="postsList"></div>
   <a class="posts-home-all" href="https://posts.wei.domains/" target="_blank" rel="noopener">all posts →</a>
 </div>
+<script>
+// A repeat visit paints the last list of recent posts at once, from this browser's copy, so the
+// block is in place at first paint and nothing under it moves when loadRecentPosts() brings the
+// live list (which replaces this). Text nodes only, and only links to the posts host.
+(function(){try{
+  var list=JSON.parse(localStorage.getItem('wns_recent_posts')||'null'),el=document.getElementById('postsList');
+  if(!Array.isArray(list)||!el)return;
+  list.slice(0,12).forEach(function(p){
+    if(!p||typeof p.t!=='string'||typeof p.n!=='string'||typeof p.h!=='string'||p.h.indexOf('https://posts.wei.domains/')!==0)return;
+    var a=document.createElement('a'),by=document.createElement('span');
+    a.href=p.h;a.target='_blank';a.rel='noopener';by.textContent=' \u00b7 '+p.n;a.append(p.t,by);el.appendChild(a);
+  });
+  if(el.children.length)document.getElementById('postsSection').style.display='';
+}catch(_){}})();
+</script>
 
 <div class="featured">
   <span class="featured-label">featured on</span>
@@ -1252,18 +1279,12 @@ try{if(localStorage.getItem('wns_dao_banner')==='1'){var _db=document.getElement
 </div>
 
 <footer style="margin-top:60px;padding:24px 0 12px;text-align:center;font-size:11px;opacity:0.65;border-top:1px solid var(--border);">
-  <a href="https://opensea.io/collection/wei-name-service" target="_blank" rel="noopener"><svg fill="currentColor" width="13" height="13" viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px"><path d="M181.566 1.00604e-05C80.91 -0.82799 -0.82799 80.91 1.00604e-05 181.566C0.84601 279.306 80.694 359.172 178.416 359.982C279.072 360.846 360.846 279.072 359.982 178.416C359.172 80.712 279.306 0.84601 181.566 1.00604e-05ZM127.746 89.586C139.266 104.22 146.16 122.742 146.16 142.83C146.16 160.236 140.994 176.436 132.12 189.954H69.714L127.728 89.568L127.746 89.586ZM318.006 199.242V212.202C318.006 213.048 317.556 213.768 316.782 214.092C312.552 215.892 298.602 222.372 292.788 230.436C277.812 251.28 266.382 284.04 240.822 284.04H134.172C96.408 284.04 64.818 254.07 64.836 214.146C64.836 213.156 65.682 212.346 66.672 212.346H117.216C118.962 212.346 120.33 213.75 120.33 215.46V225.216C120.33 230.4 124.524 234.612 129.726 234.612H168.066V212.292H141.876C156.942 193.212 165.906 169.128 165.906 142.902C165.906 113.652 154.692 86.976 136.332 67.032C147.438 68.328 158.058 70.542 168.066 73.476V67.266C168.066 60.822 173.286 55.602 179.73 55.602C186.174 55.602 191.394 60.822 191.394 67.266V82.242C227.178 98.946 250.614 126.666 250.614 158.022C250.614 176.418 242.568 193.536 228.69 207.936C226.026 210.69 222.336 212.256 218.466 212.256H191.412V234.54H225.378C232.704 234.54 245.844 220.644 252.072 212.274C252.072 212.274 252.342 211.86 253.062 211.644C253.782 211.428 315.432 197.28 315.432 197.28C316.728 196.92 318.006 197.91 318.006 199.224V199.242Z"/></svg>WNS on OpenSea</a>
-  ·
-  <a href="https://www.npmjs.com/package/wns-utils" target="_blank" rel="noopener"><svg fill="currentColor" width="14" height="14" viewBox="-2 -8 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin" style="vertical-align:middle;margin-right:4px"><path d="M0 0h20v6.857H10V8H5.556V6.857H0V0zm1.111 5.714h2.222V2.286h1.111v3.428h1.112V1.143H1.11v4.571zm5.556-4.571v5.714h2.222V5.714h2.222V1.143H6.667zm5.555 0v4.571h2.222V2.286h1.112v3.428h1.11V2.286h1.112v3.428h1.11V1.143h-6.666z"/><path d="M10 4.7H9V2.2h1z"/></svg>wns-utils</a>
-  ·
-  <a href="https://www.npmjs.com/package/@1001-digital/ethereum-names" target="_blank" rel="noopener" title="@1001-digital/ethereum-names — resolve WNS, ENS &amp; GNS names"><svg fill="currentColor" width="14" height="14" viewBox="-2 -8 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin" style="vertical-align:middle;margin-right:4px"><path d="M0 0h20v6.857H10V8H5.556V6.857H0V0zm1.111 5.714h2.222V2.286h1.111v3.428h1.112V1.143H1.11v4.571zm5.556-4.571v5.714h2.222V5.714h2.222V1.143H6.667zm5.555 0v4.571h2.222V2.286h1.112v3.428h1.11V2.286h1.112v3.428h1.11V1.143h-6.666z"/><path d="M10 4.7H9V2.2h1z"/></svg>ethereum-names</a>
-  ·
-  <a href="dao.html" title="Wei DAO — proposals, conviction voting, vetoes and treasury">Wei DAO</a>
-  ·
-  <a href="https://dao.wei.limo" target="_blank" rel="noopener" title="The DAO's own page, rendered on-chain by the contract">on-chain</a>
-  ·
-  <a href="https://holders.vote/h/wns.wei" target="_blank" rel="noopener" title="WNS holders forum on holders.vote"><svg fill="currentColor" width="12" height="12" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px"><path d="M16 5 L29 28 H3 Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>Forum</a>
-  ·
+  <a href="https://opensea.io/collection/wei-name-service" target="_blank" rel="noopener"><svg fill="currentColor" width="13" height="13" viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px"><path d="M181.566 1.00604e-05C80.91 -0.82799 -0.82799 80.91 1.00604e-05 181.566C0.84601 279.306 80.694 359.172 178.416 359.982C279.072 360.846 360.846 279.072 359.982 178.416C359.172 80.712 279.306 0.84601 181.566 1.00604e-05ZM127.746 89.586C139.266 104.22 146.16 122.742 146.16 142.83C146.16 160.236 140.994 176.436 132.12 189.954H69.714L127.728 89.568L127.746 89.586ZM318.006 199.242V212.202C318.006 213.048 317.556 213.768 316.782 214.092C312.552 215.892 298.602 222.372 292.788 230.436C277.812 251.28 266.382 284.04 240.822 284.04H134.172C96.408 284.04 64.818 254.07 64.836 214.146C64.836 213.156 65.682 212.346 66.672 212.346H117.216C118.962 212.346 120.33 213.75 120.33 215.46V225.216C120.33 230.4 124.524 234.612 129.726 234.612H168.066V212.292H141.876C156.942 193.212 165.906 169.128 165.906 142.902C165.906 113.652 154.692 86.976 136.332 67.032C147.438 68.328 158.058 70.542 168.066 73.476V67.266C168.066 60.822 173.286 55.602 179.73 55.602C186.174 55.602 191.394 60.822 191.394 67.266V82.242C227.178 98.946 250.614 126.666 250.614 158.022C250.614 176.418 242.568 193.536 228.69 207.936C226.026 210.69 222.336 212.256 218.466 212.256H191.412V234.54H225.378C232.704 234.54 245.844 220.644 252.072 212.274C252.072 212.274 252.342 211.86 253.062 211.644C253.782 211.428 315.432 197.28 315.432 197.28C316.728 196.92 318.006 197.91 318.006 199.224V199.242Z"/></svg>WNS on OpenSea</a>&nbsp;·
+  <a href="https://www.npmjs.com/package/wns-utils" target="_blank" rel="noopener"><svg fill="currentColor" width="14" height="14" viewBox="-2 -8 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin" style="vertical-align:middle;margin-right:4px"><path d="M0 0h20v6.857H10V8H5.556V6.857H0V0zm1.111 5.714h2.222V2.286h1.111v3.428h1.112V1.143H1.11v4.571zm5.556-4.571v5.714h2.222V5.714h2.222V1.143H6.667zm5.555 0v4.571h2.222V2.286h1.112v3.428h1.11V2.286h1.112v3.428h1.11V1.143h-6.666z"/><path d="M10 4.7H9V2.2h1z"/></svg>wns-utils</a>&nbsp;·
+  <a href="https://www.npmjs.com/package/@1001-digital/ethereum-names" target="_blank" rel="noopener" title="@1001-digital/ethereum-names — resolve WNS, ENS &amp; GNS names"><svg fill="currentColor" width="14" height="14" viewBox="-2 -8 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin" style="vertical-align:middle;margin-right:4px"><path d="M0 0h20v6.857H10V8H5.556V6.857H0V0zm1.111 5.714h2.222V2.286h1.111v3.428h1.112V1.143H1.11v4.571zm5.556-4.571v5.714h2.222V5.714h2.222V1.143H6.667zm5.555 0v4.571h2.222V2.286h1.112v3.428h1.11V2.286h1.112v3.428h1.11V1.143h-6.666z"/><path d="M10 4.7H9V2.2h1z"/></svg>ethereum-names</a>&nbsp;·
+  <a href="dao.html" title="Wei DAO — proposals, conviction voting, vetoes and treasury">Wei DAO</a>&nbsp;·
+  <a href="https://dao.wei.limo" target="_blank" rel="noopener" title="The DAO's own page, rendered on-chain by the contract">on-chain</a>&nbsp;·
+  <a href="https://holders.vote/h/wns.wei" target="_blank" rel="noopener" title="WNS holders forum on holders.vote"><svg fill="currentColor" width="12" height="12" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px"><path d="M16 5 L29 28 H3 Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>Forum</a>&nbsp;·
   <a href="https://github.com/src-company/wei-names" target="_blank" rel="noopener" title="wei-names on GitHub" aria-label="wei-names on GitHub"><svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
 </footer>
 
@@ -1448,10 +1469,12 @@ const textEncoder = new TextEncoder();
 // so it passed the old check, sat second in this list, and could not serve a
 // single read the dapp actually makes. gateway/wns.js had already dropped it
 // for exactly this; the dapp had not. Vet on the call you depend on.
+// eth.merkle.io was dropped (as dao.html had already): it answers 429 to every request,
+// even the first, so it only ever cost a failover hop. mevblocker took its place.
 const RPC_ENDPOINTS = [
   'https://ethereum-rpc.publicnode.com',
   'https://eth.drpc.org',
-  'https://eth.merkle.io',
+  'https://rpc.mevblocker.io',
   'https://mainnet.gateway.tenderly.co',
   'https://eth-mainnet.public.blastapi.io'
 ];
@@ -1707,7 +1730,13 @@ async function saveRpcSettings() {
   msg.className = 'rpc-test';
   try {
     const bn = await testRpcUrl(raw);
-    localStorage.setItem('wns_rpc', raw);
+    try { localStorage.setItem('wns_rpc', raw); }
+    catch (_) {
+      // The node answered; it's the browser refusing to keep it. Say which.
+      msg.textContent = 'That RPC works (block ' + bn + '), but this browser won\'t let the page save it — site storage is blocked.';
+      msg.className = 'rpc-test error';
+      return;
+    }
     invalidateRpc(); // force re-init on the new endpoint
     getRpc().catch(() => {});
     msg.textContent = 'Connected ✓  (block ' + bn + ')';
@@ -1815,6 +1844,8 @@ const regIface = new ethers.Interface(REGISTRAR_ABI);
 const ownerOfIface = new ethers.Interface(['function ownerOf(uint256) view returns (address)']);
 const balIface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
 const approvalIface = new ethers.Interface(['function isApprovedForAll(address owner, address operator) view returns (bool)']);
+// block.timestamp of the newest block, as the node answering the read has it.
+const mc3TimeIface = new ethers.Interface(['function getCurrentBlockTimestamp() view returns (uint256 timestamp)']);
 const erc20BalNonceIface = new ethers.Interface([
   'function balanceOf(address) view returns (uint256)',
   'function nonces(address) view returns (uint256)'
@@ -1899,6 +1930,19 @@ async function aggregate3(calls, retries = 2) {
     try { return calls[i].iface.decodeFunctionResult(calls[i].fn, r.returnData); }
     catch { return null; }
   });
+}
+
+// aggregate3 over more calls than one eth_call should carry: slices of `size`, a few in flight
+// at a time. One slice after another costs a round trip each; every slice at once trips the
+// public endpoints' rate limits. Results come back in call order, as from one aggregate3.
+async function aggregate3Chunked(calls, size, inFlight = 3) {
+  const slices = [];
+  for (let i = 0; i < calls.length; i += size) slices.push(calls.slice(i, i + size));
+  const out = new Array(slices.length);
+  let next = 0;
+  const worker = async () => { while (next < slices.length) { const k = next++; out[k] = await aggregate3(slices[k]); } };
+  await Promise.all(Array.from({ length: Math.min(inFlight, slices.length) }, worker));
+  return out.flat();
 }
 
 let contract = null;
@@ -2103,6 +2147,9 @@ let checkVersion = 0;
 
 function checkName() {
   clearTimeout(checkDebounce);
+  // Retire any lookup still in flight now, not when the debounce fires: one landing inside
+  // these 200ms passed its version check and re-enabled Commit for text nobody had checked.
+  checkVersion++;
   $('commitBtn').disabled = true;   // re-enabled once this input has been checked
   // Dim the previous answer at once, so it never reads as the answer for what is typed now
   $('availability').classList.add('stale');
@@ -2412,23 +2459,25 @@ async function doCheckName() {
       availEl.classList.add('show');
 
       // Recursive namehash computed locally (matches on-chain computeId).
-      const tokenId = computeIdFull(fullName);
+      const tokenId = computeIdFull(fullName + '.wei');
       const parts = fullName.split('.');
       const subLabel = parts[0];
       const parentName = parts.slice(1).join('.');
-      const parentId = computeIdFull(parentName);
+      const parentId = computeIdFull(parentName + '.wei');
 
       // One round-trip: subdomain ownerOf + the parent's registrar config, owner
       // and escrow, plus the contract's own verdict on whether this subdomain can be
       // created under that parent right now. ownerOf(sub) decoding to null (reverted)
-      // means it's unminted.
+      // means it's unminted. The manage panel's reads ride along too, as on the
+      // top-level path, so a taken subdomain is one round trip rather than two.
       const agg = await aggregate3([
         { target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [tokenId] },
         { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'config', args: [parentId] },
         { target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [parentId] },
         { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'escrowedController', args: [parentId] },
         { target: CONTRACT, iface: iface, fn: 'isAvailable', args: [subLabel, parentId] },
-        { target: CONTRACT, iface: iface, fn: 'records', args: [parentId] }
+        { target: CONTRACT, iface: iface, fn: 'records', args: [parentId] },
+        ...manageReadCalls(tokenId, fullName).calls.map(c => ({ target: CONTRACT, iface: iface, fn: c.fn, args: c.args }))
       ]);
       if (thisVersion !== checkVersion) return;
 
@@ -2468,15 +2517,19 @@ async function doCheckName() {
           } else {
             const [cfgController, cfgEnabled, cfgFeeToken, cfgPrice, cfgGateToken, cfgMinGate] = cfg;
 
-            // Mirror contract's _controllerOf: escrow takes priority over ownerOf
-            const currentController = escrowedAddr !== ethers.ZeroAddress ? escrowedAddr : parentOwner;
+            // Mirror the registrar: escrow takes priority over ownerOf — but only while the
+            // registrar still holds the parent. An escrow left behind by a parent that lapsed and
+            // was re-registered passes register()'s controller check and then reverts NotEscrowed,
+            // so it is no sale at all, and the parent's new owner can register directly.
+            const escrowLive = escrowedAddr !== ethers.ZeroAddress &&
+              parentOwner.toLowerCase() === SUBDOMAIN_REGISTRAR.toLowerCase();
+            const currentController = escrowLive ? escrowedAddr : parentOwner;
 
             // If the connected wallet owns the parent directly (not escrowed to the
             // registrar), it can register subdomains itself via NameNFT.registerSubdomain
             // for free (gas only) — no registrar sale needed. Offer that instead of the
             // dead-end "sales not enabled" / "only the parent owner can register" messages.
-            const isParentOwner = _connectedAddress &&
-              escrowedAddr === ethers.ZeroAddress &&
+            const isParentOwner = _connectedAddress && !escrowLive &&
               parentOwner.toLowerCase() === _connectedAddress.toLowerCase();
 
             if (isParentOwner) {
@@ -2494,14 +2547,17 @@ async function doCheckName() {
                   // nulls that, and a null here throws into the catch below, which
                   // advertises a 5 USDC subdomain as "5000000 tokens".
                   const p = await getRpc();
-                  [tokenDecimals, tokenSymbol] = await Promise.all([
-                    getTokenDecimals(cfgFeeToken, p),
-                    getTokenSymbol(cfgFeeToken, p)
-                  ]);
+                  // Settled separately: a token whose symbol() returns bytes32 (MKR) fails to
+                  // decode, and that must not cost the decimals that make the price readable.
+                  const [decR, symR] = await Promise.allSettled([getTokenDecimals(cfgFeeToken, p), getTokenSymbol(cfgFeeToken, p)]);
                   if (thisVersion !== checkVersion) return;
-                  priceDisplay = cfgPrice === 0n ? 'Free' : ethers.formatUnits(cfgPrice, tokenDecimals) + ' ' + tokenSymbol;
+                  if (decR.status !== 'fulfilled') throw new Error('decimals unreadable');
+                  tokenDecimals = decR.value;
+                  tokenSymbol = symR.status === 'fulfilled' ? symR.value : '';
+                  priceDisplay = cfgPrice === 0n ? 'Free' : ethers.formatUnits(cfgPrice, tokenDecimals) + ' ' + (tokenSymbol || 'tokens');
                 } catch {
-                  priceDisplay = cfgPrice.toString() + ' tokens';
+                  if (thisVersion !== checkVersion) return;
+                  priceDisplay = cfgPrice.toString() + ' base units of token ' + cfgFeeToken.slice(0, 8) + '…';
                 }
               }
 
@@ -2516,6 +2572,7 @@ async function doCheckName() {
             }
           }
         } catch {
+          if (thisVersion !== checkVersion) return;
           feeEl.textContent = 'Could not check subdomain availability — try again';
         }
       } else {
@@ -2524,7 +2581,7 @@ async function doCheckName() {
           '<div class="view-link"><a href="' + osLink + '" target="_blank" rel="noopener">View on OpenSea →</a> · <a href="#" onclick="copyShareLink();return false;">Copy link →</a></div>';
         feeEl.textContent = '';
         hideTermRow();
-        managed = await showManage(tokenId, fullName);
+        managed = await showManage(tokenId, fullName, agg.slice(6));
         if (thisVersion !== checkVersion) return; // superseded by a newer search
       }
 
@@ -2644,7 +2701,7 @@ async function doCheckName() {
       feeEl.textContent = feeText;
       showTermRow(fee, premium);
       // Dollar hint on the total, once the price is known (cached for a minute)
-      if (!globalThis.__ethUsd) rollEthUsd().then(() => { if (thisVersion === checkVersion) onTermChange(); }).catch(() => {});
+      if (!(Date.now() - (globalThis.__ethUsdAt || 0) < 60000)) rollEthUsd().then(() => { if (thisVersion === checkVersion) onTermChange(); }).catch(() => {});
     } else {
       const osLink = `https://opensea.io/assets/ethereum/${CONTRACT}/${tokenId}`;
       availEl.innerHTML = warnHtml + '<span class="taken">' + escaped + '.wei is taken</span>' +
@@ -2675,7 +2732,7 @@ async function doCheckName() {
     commitBtn.style.display = '';
     commitBtn.disabled = true;
     hideManage();
-    updateHash('');
+    updateHash(name); // a failed read is no reason to forget the name: a reload retries it
   }
 }
 
@@ -2779,6 +2836,7 @@ function paintConfirming(kind, name) {
     'Confirming ' + escapeHtml(name) + '.wei…</span>';
   $('availability').classList.add('show');
   $('feeDisplay').textContent = '';
+  hideTermRow();
   $('commitBtn').style.display = 'none';
   hideManage();
   updateHash(name);
@@ -2804,6 +2862,10 @@ async function doCommit() {
   // Disable immediately to prevent double-clicks
   $('commitBtn').disabled = true;
 
+  // This commit's record. The panel's Cancel stays clickable through the wallet prompt and the
+  // wait, and a same-name re-commit can follow it: match on the commitment, never on the name.
+  let pending = null;
+  const ours = (p) => !!(p && pending && p.secret === pending.secret);
   try {
     showStatus('Creating commitment...', '');
 
@@ -2830,7 +2892,7 @@ async function doCommit() {
     ));
 
     // Save pending BEFORE tx to persist even if user leaves during confirmation
-    const pending = {
+    pending = {
       name,
       secret: innerSecret,
       owner: userAddr,
@@ -2850,11 +2912,13 @@ async function doCommit() {
     showStatus('Submitting commitment...', '');
     const tx = await wcTransaction(contract.commit(commitment), 'Approve commitment');
 
-    // Save tx hash so timer can verify confirmation independently
+    // Save tx hash so timer can verify confirmation independently. Show the panel again too:
+    // if Cancel was pressed while the wallet was open, the commitment is on its way on-chain
+    // regardless, and this record — with its secret — is the only way to reveal it. Showing it
+    // also restarts the poller on the hash, past whatever patience the prompt used up.
     pending.txHash = tx.hash;
     savePending(pending);
-    // The wallet prompt may have sat open past the poller's patience; restart it on the hash.
-    pendingTimerId++; updateTimer(pendingTimerId);
+    displayPending(pending);
 
     showStatus('Waiting for confirmation...', '', tx.hash);
 
@@ -2881,13 +2945,13 @@ async function doCommit() {
     // Mark as confirmed
     if (confirmed) {
       const currentPending = loadPending();
-      if (currentPending && currentPending.name === name) {
+      if (ours(currentPending)) {
         // Count down from the block the commit landed in, not from when this page
         // noticed it — that lag is otherwise added to the minute
         let ts = Math.floor(Date.now() / 1000);
         try {
           const blk = await withRpc(p => p.getBlock(commitReceipt.blockNumber));
-          if (blk && blk.timestamp) ts = Math.min(ts, Number(blk.timestamp) + CLOCK_MARGIN);
+          if (blk && blk.timestamp) ts = Number(blk.timestamp) + CLOCK_MARGIN; // as markCommitConfirmed
         } catch (_) {}
         currentPending.confirmed = true;
         currentPending.timestamp = ts;
@@ -2898,7 +2962,7 @@ async function doCommit() {
     }
   } catch (e) {
     const p = loadPending();
-    if (p?.name === name && p.txHash) {
+    if (ours(p) && p.txHash) {
       // The commit tx was already broadcast (we have a hash) but confirmation
       // threw. Do NOT clear — that would delete the secret while the tx may still
       // mine, leaving an on-chain commitment the user can never reveal. Keep the
@@ -2906,9 +2970,9 @@ async function doCommit() {
       // error isn't surfaced over the recovery status.
       showStatus('Waiting for confirmation... (checking)', '', p.txHash);
       return;
-    } else if (p?.name === name) {
+    } else if (ours(p)) {
       // Failed before broadcast (e.g. user rejected in wallet) — safe to clear.
-      clearPending();
+      clearPending(p);
     } else {
       // Failed before we saved any pending — re-enable commit.
       $('commitBtn').disabled = false;
@@ -3033,7 +3097,13 @@ function selectPayMethod(el) {
 
 // Register pressed before the minute is up queues it; the timer fires it at zero.
 // Pressing again cancels.
+// The commitment (its secret) a queued reveal is for, or false. Not a bare flag: initPending
+// on an account switch paints another commitment, whose timer must not fire a reveal that was
+// queued for the old one.
 let _revealArmed = false;
+// Set by revealPreflight when the only thing wrong is that the chain hasn't reached the minute;
+// the reveal is then queued again, to be tried no sooner than _revealNotBefore.
+let _revealWaitChain = false, _revealNotBefore = 0;
 
 function revealWaitLeft() {
   const p = loadPending();
@@ -3043,13 +3113,18 @@ function revealWaitLeft() {
 }
 
 async function doRevealSelected() {
-  if (!isRevealing && revealWaitLeft() > 0) {
+  // While a reveal is queued, the button reads "Queued · cancel", and pressing it cancels —
+  // also once this device's countdown is done and the queue is only waiting on the chain.
+  const shown = loadPending();
+  const queuedHere = !!_revealArmed && !!shown && _revealArmed === shown.secret;
+  if (!isRevealing && (revealWaitLeft() > 0 || queuedHere)) {
     // Check the Tacit box now, not when the queued reveal fires unattended
     if (!_revealArmed) {
       try { tacitChoice(); }
       catch (e) { showStatus('Tacit address: ' + e.message + '. Fix it or untick the box.', 'error'); return; }
     }
-    _revealArmed = !_revealArmed;
+    const p = loadPending();
+    _revealArmed = _revealArmed ? false : (p && p.secret) || false;
     updateTimer(pendingTimerId);
     return;
   }
@@ -3060,12 +3135,19 @@ async function doRevealSelected() {
   // in-flight flag that spans the whole reveal instead.
   if (isRevealing) return;
   isRevealing = true;
+  _revealWaitChain = false;
   try {
     if (selectedPayMethod === 'usdc') await doRevealWithUSDC();
     else if (selectedPayMethod === 'dai') await doRevealWithDAI();
     else await doReveal();
   } finally {
     isRevealing = false;
+    // Refused only because the chain is a few seconds short of the minute: queue it again, to be
+    // tried once another block can have landed, instead of dropping a reveal that was asked for.
+    if (_revealWaitChain) {
+      const p = loadPending();
+      if (p) { _revealArmed = p.secret; _revealNotBefore = Date.now() + 3000; }
+    }
     // Refresh the button's enabled state immediately instead of waiting up to 1s.
     updateTimer(pendingTimerId);
   }
@@ -3094,23 +3176,35 @@ async function revealPreflight(pending) {
   }
 
   showStatus('Calculating fee...', '');
-  const calls = [
-    { fn: 'getFee', args: [byteLength(pending.name)] },
-    { fn: 'getPremium', args: [localComputeId(pending.name)] }
-  ];
-  if (pending.commitment) calls.push({ fn: 'commitments', args: [pending.commitment], allowFailure: true });
-  const r = await multicall(calls);
+  // The clock the reveal is judged by rides along in the same read: the newest block's timestamp
+  // (Multicall3.getCurrentBlockTimestamp), next to the commit's own.
+  const r = await aggregate3([
+    { target: CONTRACT, iface: iface, fn: 'getFee', args: [byteLength(pending.name)] },
+    { target: CONTRACT, iface: iface, fn: 'getPremium', args: [localComputeId(pending.name)] },
+    { target: CONTRACT, iface: iface, fn: 'commitments', args: [pending.commitment || ethers.ZeroHash] },
+    { target: MULTICALL3, iface: mc3TimeIface, fn: 'getCurrentBlockTimestamp', args: [] },
+  ]);
   if (!r[0] || !r[1]) throw new Error('Failed to fetch fee data');
 
-  const chainTs = r[2] && r[2][0] ? Number(r[2][0]) : 0;
-  const elapsed = Math.floor(Date.now() / 1000) - (chainTs ? chainTs + CLOCK_MARGIN : pending.timestamp);
+  const chainTs = pending.commitment && r[2] && r[2][0] ? Number(r[2][0]) : 0;
+  const chainNow = r[3] ? Number(r[3][0]) : 0;
+  // The minute is the chain's: NameNFT checks block.timestamp, and the wallet estimates against
+  // the newest block it has — which trails this device's clock by up to a slot, and more when the
+  // device runs fast. Counting on the device clock sent reveals the chain refused as too new
+  // (CommitmentTooNew at the estimate), and a queued one was dropped. Without both chain times,
+  // fall back to the device clock with its margin.
+  const elapsed = chainTs && chainNow ? chainNow - chainTs
+    : Math.floor(Date.now() / 1000) - (chainTs ? chainTs + CLOCK_MARGIN : pending.timestamp);
   if (elapsed < MIN_COMMIT_AGE) {
-    showStatus('Wait ' + (MIN_COMMIT_AGE - elapsed) + ' more seconds', 'error');
+    _revealWaitChain = true;
+    showStatus(chainTs && chainNow
+      ? 'Registering as soon as the next block lands — the chain is ' + (MIN_COMMIT_AGE - elapsed) + 's short of the minute'
+      : 'Wait ' + (MIN_COMMIT_AGE - elapsed) + ' more seconds', '');
     return null;
   }
   if (elapsed > MAX_COMMIT_AGE) {
     showStatus('Commitment expired. Please commit again.', 'error');
-    clearPending();
+    clearPending(pending);
     return null;
   }
 
@@ -3170,7 +3264,7 @@ async function doReveal() {
     showStatus('Waiting for confirmation...', '', txHash);
     const receipt = await waitForTx(tx);
 
-    clearPending();
+    clearPending(pending);
     showStatus(pending.name + '.wei registered' + (terms > 1 ? ' for ' + terms + ' years' : '') + '!',
       'success', txHash);
     afterRegister(pending, receipt);
@@ -3244,17 +3338,15 @@ async function doRevealWithToken(tk) {
       'function buildBestSwap(address to, bool exactOut, address tokenIn, address tokenOut, uint256 swapAmount, uint256 slippageBps, uint256 deadline) view returns (tuple(uint8 source, uint256 feeBps, uint256 amountIn, uint256 amountOut) best, bytes callData, uint256 amountLimit, uint256 msgValue)'
     ];
     const quoter = new ethers.Contract(ZQUOTER, quoterAbi, rpc);
-    const quote = await quoter.buildBestSwap(
-      ZROUTER, true, tk.addr, ethers.ZeroAddress, totalEth, 200n, deadline
-    );
-
-    const maxAmount = quote.amountLimit;
-    if (quote.best.amountIn === 0n) throw new Error(`Could not get ${tk.name} quote`);
-
-    const [balRes, nonceRes] = await Promise.all([
+    // The balance and permit nonce don't depend on the quote: one round trip for all three.
+    const [quote, balRes, nonceRes] = await Promise.all([
+      quoter.buildBestSwap(ZROUTER, true, tk.addr, ethers.ZeroAddress, totalEth, 200n, deadline),
       rpc.call({ to: tk.addr, data: erc20BalNonceIface.encodeFunctionData('balanceOf', [to]) }),
       rpc.call({ to: tk.addr, data: erc20BalNonceIface.encodeFunctionData('nonces', [to]) })
     ]);
+
+    const maxAmount = quote.amountLimit;
+    if (quote.best.amountIn === 0n) throw new Error(`Could not get ${tk.name} quote`);
     const balance = erc20BalNonceIface.decodeFunctionResult('balanceOf', balRes)[0];
     const nonce = erc20BalNonceIface.decodeFunctionResult('nonces', nonceRes)[0];
 
@@ -3290,7 +3382,7 @@ async function doRevealWithToken(tk) {
     showStatus('Waiting for confirmation...', '', txHash);
     const receipt = await waitForTx(tx);
 
-    clearPending();
+    clearPending(pending);
     showStatus(`${pending.name}.wei registered with ${tk.name}! (~${displayAmount} ${tk.name})`, 'success', txHash);
     afterRegister(pending, receipt);
   } catch (e) {
@@ -3378,6 +3470,11 @@ function loadPending() {
       try { d = sanePending(JSON.parse(localStorage.getItem(k) || 'null')); } catch (_) {}
       if (d && (!best || (d.timestamp || 0) > (best.timestamp || 0))) { best = d; bestKey = k; }
     }
+    // Hand back the same object while it is the same commitment, as the connected branch does:
+    // the timer keeps its poll counters on it, and a fresh parse every tick reset them to 1, so
+    // its give-up and dropped-reveal checks could never trigger while disconnected.
+    if (best && pendingCache && pendingCache.key === bestKey && pendingCache.data &&
+        pendingCache.data.secret === best.secret) return pendingCache.data;
     pendingCache = bestKey ? { key: bestKey, data: best } : null;
     return best;
   } catch (_) { return null; }
@@ -3412,7 +3509,7 @@ async function initPending() {
         registered = !!owner && owner !== ethers.ZeroAddress;
       } catch (_) { registered = false; } // ownerOf reverts for an unminted token
       if (registered) {
-        clearPending();
+        clearPending(pending);
         // Ours, and the page closed before the Tacit write: finish it now.
         if (pending.tacit && pending.owner && owner.toLowerCase() === pending.owner.toLowerCase()) {
           afterRegister(pending, null);
@@ -3424,18 +3521,32 @@ async function initPending() {
     // silently ignore - will check again on next interaction
   }
 
-  displayPending(pending);
-  return pending;
+  // Those reads take a moment, and a wallet connecting meanwhile runs its own initPending for
+  // its own account: only paint what is still this account's commitment.
+  const cur = loadPending();
+  if (!cur || cur.secret !== pending.secret) return null;
+  displayPending(cur);
+  return cur;
 }
 
-function clearPending() {
-  const p = loadPending();
-  const key = pendingKeyFor((p && p.owner) || _connectedAddress) || (pendingCache && pendingCache.key);
+// Delete a commitment's secret. `target` is the commitment the caller decided about; without
+// one (the Cancel button) it is the one on screen. Callers decide, then await, then clear —
+// and an account switch in between changes what loadPending() returns, so clearing "the
+// current one" deleted another account's secret. Only the target's own stored entry goes, and
+// the panel closes only if it is the one showing.
+function clearPending(target) {
+  const cur = loadPending();
+  const victim = target || cur;
   pendingCache = null; // Invalidate cache
   try {
-    if (key) localStorage.removeItem(key);
+    const key = victim ? pendingKeyFor(victim.owner || _connectedAddress) : null;
+    const raw = key && localStorage.getItem(key);
+    let stored = null;
+    try { stored = raw ? JSON.parse(raw) : null; } catch (_) {}
+    if (key && (!stored || !victim.secret || stored.secret === victim.secret)) localStorage.removeItem(key);
     localStorage.removeItem(STORAGE_KEY); // legacy slot, just in case
   } catch (e) {}
+  if (target && cur && cur.secret !== target.secret) return; // the panel shows someone else's
   hidePendingPanel();
   // Re-enable commit if there was a name entered
   if ($('nameInput').value.trim() && contract) doCheckName();
@@ -3525,7 +3636,7 @@ async function updateTimer(timerId) {
       if (receipt) {
         if (receipt.status === 1) {
           showStatus(pending.name + '.wei registered!', 'success', pending.revealTxHash);
-          clearPending();
+          clearPending(pending);
           afterRegister(pending, receipt);
           return;
         }
@@ -3576,12 +3687,13 @@ async function updateTimer(timerId) {
   }
 
   // The button queues the reveal while waiting; say so on it
-  revealBtn.textContent = _revealArmed ? 'Queued · cancel' : 'Register';
-  revealBtn.classList.toggle('secondary', _revealArmed);
+  const armed = !!_revealArmed && _revealArmed === pending.secret;
+  revealBtn.textContent = armed ? 'Queued · cancel' : 'Register';
+  revealBtn.classList.toggle('secondary', armed);
 
   if (pending.confirmed === false) {
     // Explicitly false means commit tx is still pending
-    timerEl.textContent = _revealArmed ? 'Waiting for confirmation… registers automatically' : 'Waiting for confirmation...';
+    timerEl.textContent = armed ? 'Waiting for confirmation… registers automatically' : 'Waiting for confirmation...';
     revealBtn.disabled = !_signer;
 
     // Track poll attempts
@@ -3618,7 +3730,10 @@ async function updateTimer(timerId) {
       // ts: the on-chain commit time when known; the reveal window runs from it
       const markCommitConfirmed = (ts) => {
         pending.confirmed = true;
-        pending.timestamp = ts ? Math.min(Number(ts) + CLOCK_MARGIN, Math.floor(Date.now() / 1000)) : Math.floor(Date.now() / 1000);
+        // Exactly the clock revealPreflight checks (commit block + CLOCK_MARGIN): capping it at
+        // "now" made the countdown hit zero up to CLOCK_MARGIN seconds before the reveal is
+        // accepted, and a queued reveal fired into "Wait 2 more seconds" and was dropped.
+        pending.timestamp = ts ? Number(ts) + CLOCK_MARGIN : Math.floor(Date.now() / 1000);
         delete pending._pollAttempts;
         delete pending._pollErrors;
         savePending(pending);
@@ -3664,7 +3779,7 @@ async function updateTimer(timerId) {
             return;
           } else {
             showStatus('Commit transaction reverted. Please try again.', 'error', pending.txHash);
-            clearPending();
+            clearPending(pending);
             return;
           }
         } else if ((landedTs = await commitLandedOnchain())) {
@@ -3693,10 +3808,10 @@ async function updateTimer(timerId) {
       }
     }
   } else if (remaining > 0) {
-    timerEl.textContent = _revealArmed ? 'Registers automatically in ' + remaining + 's' : 'Ready in ' + remaining + 's';
+    timerEl.textContent = armed ? 'Registers automatically in ' + remaining + 's' : 'Ready in ' + remaining + 's';
     revealBtn.disabled = !_signer || isRevealing;
   } else if (elapsed < MAX_COMMIT_AGE) {
-    if (_revealArmed && !isRevealing && _signer) {
+    if (armed && !isRevealing && _signer && Date.now() >= _revealNotBefore) {
       _revealArmed = false;
       revealBtn.textContent = 'Register';
       revealBtn.classList.remove('secondary');
@@ -3800,7 +3915,7 @@ function manageReadCalls(tokenId, name) {
   // calls (availability -> this batch -> parent records). It is only *used* once
   // the chain confirms it really is this token's parent, so a mismatch falls back
   // to the extra call rather than trusting a locally derived id.
-  const parentIdGuess = name.includes('.') ? computeIdFull(name.split('.').slice(1).join('.')) : null;
+  const parentIdGuess = name.includes('.') ? computeIdFull(name.split('.').slice(1).join('.') + '.wei') : null;
   const calls = [
     { fn: 'ownerOf', args: [tokenId], allowFailure: true },
     { fn: 'resolve', args: [tokenId], allowFailure: true },
@@ -4258,7 +4373,7 @@ function postPictures(text) {
   return out;
 }
 const carrierTitleFor = (title) => `Images for “${title || 'Untitled'}”`.slice(0, 200);
-const carrierBody = (list) => list.map((p) => `![${p.alt}](${p.url})`).join('\n\n');
+const carrierBody = (list) => list.map((p) => `![${p.alt.slice(0, 300).replace(/[\uD800-\uDBFF]$/, '')}](${p.url})`).join('\n\n'); // the gateway numbers only pictures with alts of 300 or fewer, so a longer one would shift every /img address after it
 // Pictures packed into image posts in order, each as full as a blob takes.
 function packCarriers(pics, title) {
   const ct = carrierTitleFor(title), groups = [];
@@ -4349,10 +4464,16 @@ function updatePostCost() {
     ? `${size}. Checking the publishing fee…`
     : `${size}. Publishing costs ${ethers.formatEther(currentPostFee)} ETH plus gas for one transaction, whatever the size. The contract holds the fee and pays it to the publisher only once it puts this exact post in a blob. If that hasn't happened within a day, you can take the fee back.`) + linkNote;
 }
+let postCostTimer = null;
 function onPostInput() {
-  updatePostCost();
+  // An error about the form is stale as soon as the form changes; the cost line can wait for a
+  // pause in the typing — with many pictures it re-encodes the whole post (tens of ms a key).
+  const status = $('status');
+  if (status?.classList.contains('error')) status.classList.remove('show');
+  clearTimeout(postCostTimer);
+  postCostTimer = setTimeout(updatePostCost, 150);
   clearTimeout(postDraftTimer);
-  postDraftTimer = setTimeout(savePostDraft, 400);
+  postDraftTimer = setTimeout(() => { savePostDraft(); postRefitIfFewer(); }, 400);
   if ($('ppPreview')?.style.display === 'block') {
     clearTimeout(postPreviewTimer);
     postPreviewTimer = setTimeout(renderPostPreview, 600);
@@ -4363,11 +4484,18 @@ function onPostInput() {
 const postDraftKey = (tokenId) => `wns_post_draft_${tokenHexOf(tokenId)}`;
 function savePostDraft() {
   if (!postEditorToken || !$('ppBody')) return;
+  const key = postDraftKey(postEditorToken);
   const draft = { title: $('ppTitle').value, body: $('ppBody').value, images: [...postImages], cover: postCover, seq: postImageSeq };
+  const note = (t) => { const el = $('ppDraftNote'); if (el) el.textContent = t; };
   try {
-    if (!draft.title && !draft.body && !draft.cover) localStorage.removeItem(postDraftKey(postEditorToken));
-    else localStorage.setItem(postDraftKey(postEditorToken), JSON.stringify(draft));
-  } catch (e) {}
+    if (!draft.title && !draft.body && !draft.cover) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(draft));
+  } catch (e) {
+    // Over this browser's storage quota (pictures are nearly all of it). Keep the words at least,
+    // and never leave an older, smaller draft behind to come back later as if it were this one.
+    try { localStorage.setItem(key, JSON.stringify({ ...draft, images: [], cover: null })); note('Draft kept without its pictures: too big for this browser to store.'); }
+    catch (_) { try { localStorage.removeItem(key); } catch (__) {} note('Too big for this browser to keep as a draft: publish before closing the tab.'); }
+  }
 }
 function clearPostDraft(tokenId) {
   try { localStorage.removeItem(postDraftKey(tokenId)); } catch (e) {}
@@ -4389,6 +4517,7 @@ function initPostEditor() {
       if (draft.title || draft.body || draft.cover) $('ppDraftNote').textContent = 'Your draft is back.';
     }
   } catch (e) {}
+  postFittedCount = postPictures(ta.value).length;
   renderCoverSlot();
   ta.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -4397,7 +4526,7 @@ function initPostEditor() {
   });
   ta.addEventListener('paste', (e) => {
     const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
-    if (files.length) { e.preventDefault(); files.forEach(attachPostImage); return; }
+    if (files.length) { e.preventDefault(); files.forEach(queuePostImage); return; }
     // A URL pasted over selected text makes it a link, unless the selection is already where a link's
     // address goes (the Link button selects "https://" there): then the URL simply replaces it.
     const text = e.clipboardData?.getData('text/plain') || '';
@@ -4417,7 +4546,7 @@ function initPostEditor() {
     if (!files.length) return;
     e.preventDefault();
     for (const f of files) {
-      if (f.type.startsWith('image/')) attachPostImage(f);
+      if (f.type.startsWith('image/')) queuePostImage(f);
       else if (/\.(md|markdown|txt)$/i.test(f.name) || /^text\//.test(f.type)) loadMarkdownFile(f);
     }
   });
@@ -4435,7 +4564,7 @@ function postFormat(kind) {
     ta.setSelectionRange(a + left.length, a + left.length + t.length);
   };
   const lines = (prefix) => {
-    const start = value.lastIndexOf('\n', a - 1) + 1;
+    const start = a ? value.lastIndexOf('\n', a - 1) + 1 : 0; // lastIndexOf(…, -1) still looks at index 0
     let end = value.indexOf('\n', b);
     if (end < 0) end = value.length;
     const block = value.slice(start, end).split('\n').map((line, i) => prefix(i) + line.replace(/^(#{1,6} |> |- |\d+\. )/, '')).join('\n');
@@ -4564,13 +4693,34 @@ async function fitPostImages(fresh) {
   return shrunk;
 }
 
+// Image work — attaching, setting the cover, re-fitting — one job at a time. Run side by side,
+// fits re-fit each other's pictures, and an attach that failed restored the text as it had been
+// before it, wiping the tags of attaches that finished meanwhile.
+let postImageQueue = Promise.resolve();
+function postImageWork(job) {
+  const run = postImageQueue.then(job);
+  postImageQueue = run.catch(() => {});
+  return run;
+}
+const queuePostImage = (file) => postImageWork(() => attachPostImage(file));
+const queuePostCover = (file) => postImageWork(() => setPostCover(file));
+// Pictures taken out (a tag deleted, the cover removed) leave the rest room: re-fit them, or a
+// post that needed image posts for twelve pictures goes on paying for them with five left.
+let postFittedCount = 0;
+function postRefitIfFewer() {
+  const n = postPictures($('ppBody')?.value || '').length;
+  const fewer = n < postFittedCount;
+  postFittedCount = n;
+  if (fewer) postImageWork(() => fitPostImages(null)).then(updatePostCost, () => {});
+}
+
 async function attachPostImage(file) {
   const ta = $('ppBody');
   if (!ta || !file) return;
   showStatus('Fitting the image into the post...', '');
   const id = String(++postImageSeq);
   const alt = (file.name || 'image').replace(/\.[a-z0-9]+$/i, '').replace(/[\[\]\n]+/g, ' ').trim().slice(0, 80) || 'image';
-  const at = ta.selectionStart, end = ta.selectionEnd, before = ta.value.slice(0, at), was = ta.value;
+  const at = ta.selectionStart, end = ta.selectionEnd, before = ta.value.slice(0, at);
   const lead = !before || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
   ta.setRangeText(`${lead}![${alt}](img:${id})\n\n`, at, end, 'end');
   postImageSources.set(id, file);
@@ -4582,8 +4732,10 @@ async function attachPostImage(file) {
     ta.focus();
     onPostInput();
   } catch (e) {
-    // Leave the post as it was.
-    ta.value = was; ta.setSelectionRange(at, end);
+    // Take back only what this attach put in: the text may have been edited while it fitted.
+    const tag = `${lead}![${alt}](img:${id})\n\n`, i = ta.value.indexOf(tag);
+    if (i >= 0) ta.setRangeText('', i, i + tag.length, 'start');
+    else ta.value = ta.value.split(`![${alt}](img:${id})`).join(''); // edited around it: just the tag
     postImageSources.delete(id); postImages.delete(id);
     showStatus(e.message || 'Couldn’t attach that image', 'error');
   }
@@ -4652,7 +4804,7 @@ function postsFormHtml() {
     '<div class="post-list" id="ppList" aria-live="polite"></div>' +
     '<div class="post-section">New post <span id="ppDraftNote" class="post-draft-note"></span></div>' +
     '<div id="ppCover" class="post-cover"></div>' +
-    `<input type="file" id="ppCoverFile" accept="image/*" hidden onchange="setPostCover(this.files[0]); this.value=''">` +
+    `<input type="file" id="ppCoverFile" accept="image/*" hidden onchange="queuePostCover(this.files[0]); this.value=''">` +
     '<input type="text" id="ppTitle" class="post-title-input" maxlength="200" placeholder="Title" aria-label="Title">' +
     '<div class="post-tabs" role="tablist">' +
     `<button type="button" role="tab" id="ppTabWrite" class="post-tab active" onclick="postTab('write')">Write</button>` +
@@ -4668,7 +4820,7 @@ function postsFormHtml() {
     '</div>' +
     // No scripts run in the preview; links may open, in a new tab, so they can be checked.
     '<iframe id="ppPreview" class="post-preview" sandbox="allow-popups allow-popups-to-escape-sandbox" title="Post preview"></iframe>' +
-    `<input type="file" id="ppImageFile" accept="image/*" multiple hidden onchange="[...this.files].forEach(attachPostImage); this.value=''">` +
+    `<input type="file" id="ppImageFile" accept="image/*" multiple hidden onchange="[...this.files].forEach(queuePostImage); this.value=''">` +
     `<input type="file" id="ppMdFile" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden onchange="loadMarkdownFile(this.files[0]); this.value=''">` +
     '<div class="post-room"><div id="ppRoom"></div></div>' +
     '<div class="post-hint" id="ppCost" aria-live="polite"></div>' +
@@ -4695,7 +4847,7 @@ async function loadOwnPosts() {
     const res = await fetch(`${POSTS_API}/names/${tokenHexOf(tokenId)}/posts`, { cache: 'no-store' });
     const { posts } = await res.json();
     if (tokenId !== currentTokenId || !$('ppList')) return;
-    let html = (posts || []).map((p) => `<div class="post-row"><span class="post-date">${new Date(p.time * 1000).toISOString().slice(0, 10)}</span>` +
+    let html = (posts || []).filter((p) => /^0x[0-9a-f]{64}$/.test(p?.hash || '') && typeof p.title === 'string' && Number.isFinite(p.time)).map((p) => `<div class="post-row"><span class="post-date">${new Date(p.time * 1000).toISOString().slice(0, 10)}</span>` +
       `<a href="${escapeHtml(home + postPathFor(p.hash, p.title))}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a>` +
       `<span class="post-state">${p.onchain ? 'in a blob' : 'publishing'}</span>` +
       `<button class="secondary" onclick="doRemovePost('${p.hash}')">Remove</button></div>`).join('');
@@ -4726,14 +4878,20 @@ async function refundRows(tokenId) {
     return true;
   });
   if (!list.length) return '';
-  const posts = new ethers.Contract(POSTS_CONTRACT, POSTS_ABI, await getRpc());
+  // Every entry's delivery and deposit in one round trip, not one per entry in turn.
+  const postsIface = new ethers.Interface(POSTS_ABI);
+  const reads = await aggregate3(list.flatMap((p) => {
+    const key = escrowKeyOf(p.blob, p.publisher);
+    return [{ target: POSTS_CONTRACT, iface: postsIface, fn: 'delivered', args: [key] },
+            { target: POSTS_CONTRACT, iface: postsIface, fn: 'deposits', args: [key, _connectedAddress] }];
+  })).catch(() => []);
   const keep = [];
   let html = '';
-  for (const p of list) {
+  for (const [i, p] of list.entries()) {
     try {
-      const key = escrowKeyOf(p.blob, p.publisher);
-      const [delivered, deposit] = await Promise.all([posts.delivered(key), posts.deposits(key, _connectedAddress)]);
-      if (delivered || deposit.amount === 0n) continue; // published (and paid), or already refunded
+      const del = reads[2 * i], deposit = reads[2 * i + 1];
+      if (!del || !deposit) throw new Error('unread'); // couldn't ask: keep it for next time
+      if (del[0] || deposit.amount === 0n) continue; // published (and paid), or already refunded
       keep.push(p);
       const due = Number(deposit.refundableAt) * 1000 <= Date.now();
       const title = p.title || `Post ${String(p.hash || '').slice(0, 10)}`;
@@ -4778,13 +4936,16 @@ async function uploadPost(bytes, hash) {
   if (out.hash !== hash) throw new Error('The gateway stored different bytes than this post');
   return true;
 }
-async function waitForPostIndexed(hash, timeoutMs = 120000) {
+// On the name's page means authorized for this name and not removed since — a post removed and
+// posted again has an old authorization the index already knows.
+async function waitForPostIndexed(hash, token, timeoutMs = 120000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await fetch(`${POSTS_API}/sync`, { method: 'POST' }).catch(() => {});
     const res = await fetch(`${POSTS_API}/posts/${hash}`, { cache: 'no-store' }).catch(() => null);
     const detail = res?.ok ? await res.json().catch(() => null) : null;
-    if (detail?.authorizations?.length) return true;
+    const auths = (detail?.authorizations || []).filter((a) => a.tokenId === token);
+    if (auths.length && !auths[auths.length - 1].removed) return true;
     await new Promise((resolve) => setTimeout(resolve, 6000));
   }
   return false;
@@ -4792,6 +4953,9 @@ async function waitForPostIndexed(hash, timeoutMs = 120000) {
 
 // Several calls under one approval (ERC-5792 wallet_sendCalls) where the wallet can, as the names
 // panel enters roll.wei; else one transaction each, in order, each confirmed before the next.
+// Resolves true once every call is known to have landed, false when the wallet couldn't say yet;
+// throws when any failed. Unlike roll's batch, nothing rescans afterwards, so a partial batch —
+// say the post's own authorize reverted — is a failure, not a success to clear the draft on.
 async function postSendCalls(calls, labels) {
   if (window._walletSendCalls) {
     try {
@@ -4804,8 +4968,9 @@ async function postSendCalls(calls, labels) {
       showStatus('Submitted. Confirming...', '');
       const st = id ? await rollPollCallsStatus(id, 40, 3000) : null;
       const code = st && st.status;
-      if ((typeof code === 'number' && code >= 400 && code !== 600) || code === 'FAILED') throw new Error('The wallet reports the transactions failed');
-      return;
+      const reverted = Array.isArray(st?.receipts) && st.receipts.some((r) => r && /^(0x0|0)$/.test(String(r.status)));
+      if ((typeof code === 'number' && code >= 400) || code === 'FAILED' || code === 'PARTIAL' || reverted) throw new Error('The wallet reports the transactions failed');
+      return code === 200 || code === 'CONFIRMED';
     } catch (e) {
       // A decline stays a decline; a wallet that can't take this bundle falls back to one at a time.
       if (e && (e.code === 4001 || /user (rejected|denied|cancelled)/i.test(e.message || ''))) throw e;
@@ -4818,6 +4983,7 @@ async function postSendCalls(calls, labels) {
     showStatus(`Waiting for ${i + 1} of ${calls.length} to confirm...`, '', tx.hash);
     await waitForTx(tx);
   }
+  return true;
 }
 
 async function doPublishPost() {
@@ -4826,8 +4992,13 @@ async function doPublishPost() {
   if (!title) { showStatus('Give the post a title', 'error'); return; }
   const missing = missingPostImages();
   if (missing.length) { showStatus(`${missing.map((id) => `img:${id}`).join(', ')} ${missing.length === 1 ? 'has' : 'have'} no picture in this browser: attach ${missing.length === 1 ? 'it' : 'them'} again, or delete ${missing.length === 1 ? 'that line' : 'those lines'}`, 'error'); return; }
+  // Finish any image work first, and give pictures back their room if some were taken out, so
+  // the plan is the smallest the post can be (no image posts paid for that it no longer needs).
+  try { await postImageWork(() => fitPostImages(null)); } catch (_) {}
   let plan;
   try { plan = buildPostPlan(); } catch (e) { showStatus(e.message || 'Couldn’t build the post', 'error'); return; }
+  // What is being published, to tell afterwards whether the editor still holds only that.
+  const sent = { title: $('ppTitle')?.value, body: $('ppBody')?.value, cover: postCover };
   if (plan.bytes.length > POST_MAX_BYTES) { showStatus(`The text is too long: ${plan.bytes.length} bytes, the most is ${POST_MAX_BYTES}`, 'error'); return; }
   const hash = ethers.keccak256(plan.bytes);
   const name = currentTokenName + '.wei';
@@ -4840,40 +5011,65 @@ async function doPublishPost() {
     showStatus(parts.length === 1 ? 'Preparing the blob...' : `Preparing ${parts.length} blobs...`, '');
     // The publisher is only paid for exactly these blobs, so their hashes are computed here, not taken from anyone.
     const { blobVersionedHash } = await import('./vendor/kzg.bundle.mjs');
-    for (const part of parts) part.blob = blobVersionedHash(postBlobFrom(part.bytes));
+    // About a second of main thread per full blob: let the page paint between them.
+    for (const [i, part] of parts.entries()) {
+      if (parts.length > 1) showStatus(`Preparing blob ${i + 1} of ${parts.length}...`, '');
+      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+      part.blob = blobVersionedHash(postBlobFrom(part.bytes));
+    }
     showStatus(parts.length === 1 ? 'Uploading the post...' : `Uploading ${parts.length} posts...`, '');
-    for (const part of parts) part.uploaded = await uploadPost(part.bytes, part.hash);
+    for (let i = 0; i < parts.length; i += 3) {
+      await Promise.all(parts.slice(i, i + 3).map(async (part) => { part.uploaded = await uploadPost(part.bytes, part.hash); }));
+    }
     // The same post always makes the same blob. One the publisher already delivered (a post removed and
-    // posted again, say) is in a blob already and needs no fee; the contract would refuse one.
-    const reader = new ethers.Contract(POSTS_CONTRACT, POSTS_ABI, await getRpc());
-    for (const part of parts) part.delivered = await reader.delivered(escrowKeyOf(part.blob, POSTS_PUBLISHER));
-    if (parts.some((p) => !p.delivered)) {
+    // posted again, say) is in a blob already and needs no fee; the contract would refuse one. And a fee
+    // this account already holds in escrow for a blob, not refundable for hours yet, still pays for it:
+    // a publish resumed before the index caught up with the first try would otherwise pay again —
+    // deposits add up, and delivery pays the publisher the whole escrow. The chain is never behind.
+    const postsIface = new ethers.Interface(POSTS_ABI);
+    const escrow = await aggregate3(parts.flatMap((part) => {
+      const key = escrowKeyOf(part.blob, POSTS_PUBLISHER);
+      return [{ target: POSTS_CONTRACT, iface: postsIface, fn: 'delivered', args: [key] },
+              { target: POSTS_CONTRACT, iface: postsIface, fn: 'deposits', args: [key, _connectedAddress] }];
+    }));
+    const nowSec = Math.floor(Date.now() / 1000);
+    parts.forEach((part, i) => {
+      const del = escrow[2 * i], dep = escrow[2 * i + 1];
+      if (!del) throw new Error('Couldn’t read the posts contract — try again');
+      part.delivered = del[0];
+      // The publisher's own rule (posts/poster SAFETY_MARGIN): a deposit refundable within 6 hours doesn't count.
+      part.prepaid = !part.delivered && !!dep && dep.amount > 0n && Number(dep.refundableAt) - nowSec > 6 * 3600;
+    });
+    if (parts.some((p) => !p.delivered && !p.prepaid)) {
       await refreshPostQuote();
       if (currentPostFee == null) throw new Error('Couldn’t read current gas prices to price the post');
     }
-    for (const part of parts) part.fee = part.delivered ? 0n : currentPostFee;
+    for (const part of parts) part.fee = part.delivered || part.prepaid ? 0n : currentPostFee;
     const posts = new ethers.Contract(POSTS_CONTRACT, POSTS_ABI, _signer);
-    let confirmedTx = null;
+    let confirmedTx = null, landed = false;
     if (parts.length === 1) {
       const fee = parts[0].fee;
-      showStatus(fee === 0n ? 'Approve the post. It is already in a blob, so there is no fee' : `Approve the post: ${ethers.formatEther(fee)} ETH, held until the publisher delivers its blob`, '');
+      showStatus(fee === 0n
+        ? (parts[0].delivered ? 'Approve the post. It is already in a blob, so there is no fee' : 'Approve the post. Its fee is already held for the publisher, so there is no new one')
+        : `Approve the post: ${ethers.formatEther(fee)} ETH, held until the publisher delivers its blob`, '');
       const tx = await wcTransaction(posts.authorize(tokenId, hash, parts[0].blob, POSTS_PUBLISHER, { value: fee }), 'Approve the post');
       if (fee > 0n) savePaidPosts(tokenId, [...paidPosts(tokenId).filter((p) => p.blob !== parts[0].blob), { hash, blob: parts[0].blob, publisher: POSTS_PUBLISHER, title }]);
       showStatus('Waiting for confirmation...', '', tx.hash);
       await waitForTx(tx);
       confirmedTx = tx.hash;
+      landed = true;
     } else {
       // Resuming: image posts this name already authorized (a publish that stopped partway, say, when
       // a wallet prompt never came) are skipped, and one authorized but still listed is only unlisted.
       // Image posts are made the same way from the same draft, so they have the same hashes.
       const me = (_connectedAddress || '').toLowerCase(), token = tokenHexOf(tokenId);
-      for (const part of parts.filter((p) => p.carrier)) {
+      await Promise.all(parts.filter((p) => p.carrier).map(async (part) => {
         try {
           const res = await fetch(`${POSTS_API}/posts/${part.hash}`, { cache: 'no-store' });
           const auths = res.ok ? ((await res.json()).authorizations || []).filter((a) => a.tokenId === token && a.author === me) : [];
           if (auths.length) { part.authorized = true; part.removed = !!auths[auths.length - 1].removed; }
         } catch (_) {}
-      }
+      }));
       const done = parts.filter((p) => p.carrier && p.authorized && p.removed).length;
       // Each image post is authorized, then taken off the name's list (its pictures stay in its blob,
       // where /img finds them); then the post itself.
@@ -4896,22 +5092,30 @@ async function doPublishPost() {
       // Remembered before sending, so a refund is offered even if this tab closes partway.
       savePaidPosts(tokenId, [...paidPosts(tokenId).filter((p) => !parts.some((x) => x.blob === p.blob && !x.authorized)),
         ...parts.filter((p) => p.fee > 0n && !p.authorized).map((p) => ({ hash: p.hash, blob: p.blob, publisher: POSTS_PUBLISHER, title: p.title }))]);
-      await postSendCalls(calls, labels);
+      landed = await postSendCalls(calls, labels);
     }
-    showStatus('Confirmed. Adding it to your page...', '', confirmedTx);
+    showStatus(landed ? 'Confirmed. Adding it to your page...' : 'Submitted. Adding it to your page...', '', confirmedTx);
     // Upload again now that they're authorized: the index keeps bytes that aren't in a blob yet in
     // memory, so a gateway restart since the first upload would otherwise leave the publisher
     // nothing to fetch. Bytes of an authorized post are always accepted.
     for (const part of parts) {
       for (let i = 0; i < 12 && !(await uploadPost(part.bytes, part.hash).catch(() => false)); i++) await new Promise((resolve) => setTimeout(resolve, 10000));
     }
-    const indexed = await waitForPostIndexed(hash);
+    const indexed = await waitForPostIndexed(hash, tokenHexOf(tokenId));
     const url = postsHomeOf(name) + postPathFor(hash, title);
-    $('status').innerHTML = escapeHtml(indexed ? 'Posted! It is on your page now and goes into an Ethereum blob within a few minutes. ' : 'Posted! It will appear on your page within a few minutes. ') +
+    // The draft goes only once the post is known to have landed, and only if the editor holds
+    // nothing typed or attached since Publish was pressed — the fields stay live throughout.
+    const done = landed || indexed;
+    const untouched = !$('ppTitle') || ($('ppTitle').value === sent.title && $('ppBody').value === sent.body && postCover === sent.cover);
+    $('status').innerHTML = escapeHtml(indexed ? 'Posted! It is on your page now and goes into an Ethereum blob within a few minutes. '
+        : done ? 'Posted! It will appear on your page within a few minutes. '
+        : 'Sent, but the wallet hasn’t confirmed it yet, so your draft is kept until it shows on your page. ') +
       `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:inherit;">View post →</a>`;
     $('status').className = 'status show success';
-    clearPostDraft(tokenId);
-    if ($('ppTitle') && currentTokenId === tokenId) { $('ppTitle').value = ''; $('ppBody').value = ''; renderCoverSlot(); postTab('write'); updatePostCost(); }
+    if (done && untouched) {
+      clearPostDraft(tokenId);
+      if ($('ppTitle') && currentTokenId === tokenId) { $('ppTitle').value = ''; $('ppBody').value = ''; renderCoverSlot(); postTab('write'); updatePostCost(); }
+    }
     loadOwnPosts();
   } catch (e) {
     handleError(e);
@@ -4972,6 +5176,7 @@ async function loadRecentPosts() {
     const res = await fetch(POSTS_API + '/posts/recent?limit=12');
     const { posts } = await res.json();
     list.innerHTML = '';
+    const kept = [];
     for (const p of posts || []) {
       if (!/^0x[0-9a-f]{64}$/.test(p.hash || '') || !/\.wei$/.test(p.name || '') || typeof p.title !== 'string') continue;
       const a = document.createElement('a');
@@ -4981,9 +5186,16 @@ async function loadRecentPosts() {
       by.textContent = ' · ' + p.name;
       a.append(p.title, by);
       list.appendChild(a);
+      kept.push({ h: a.href, t: p.title, n: p.name });
     }
     sec.style.display = list.children.length ? '' : 'none';
-  } catch (e) {}
+    // For the next visit's first paint (the inline script after #postsSection): the block is
+    // then already there when this runs, and nothing below it jumps.
+    try {
+      if (kept.length) localStorage.setItem('wns_recent_posts', JSON.stringify(kept));
+      else localStorage.removeItem('wns_recent_posts');
+    } catch (_) {}
+  } catch (e) {}  // unreachable index: a list painted from the last visit stays up
 }
 loadRecentPosts();
 
@@ -5018,7 +5230,7 @@ async function initRenewTerms() {
     _renewFee = null;
   }
   renderRenewQuote();
-  if (!globalThis.__ethUsd) rollEthUsd().then(renderRenewQuote).catch(() => {});
+  if (!(Date.now() - (globalThis.__ethUsdAt || 0) < 60000)) rollEthUsd().then(renderRenewQuote).catch(() => {});
 }
 
 function renewTermCount() {
@@ -5733,6 +5945,11 @@ function encodeContenthash(input) {
     if (!isWellFormedCidV1(ipnsBytes)) {
       throw new Error('That IPNS name looks incomplete or mistyped — check the full k51… value.');
     }
+    // An IPNS name is a libp2p-key CID (codec 0x72). An IPFS CID behind ipns:// encodes and
+    // writes without complaint, then every gateway refuses it: a dead site and no error.
+    if (ipnsBytes[1] !== 0x72) {
+      throw new Error('That is an IPFS CID, not an IPNS name — paste it without ipns://');
+    }
     return ethers.concat([encodeUvarint(0xe5), ipnsBytes]);
   }
 
@@ -5775,6 +5992,8 @@ function encodeContenthash(input) {
 async function doSetContent() {
   if (isProcessing || !contract || !currentTokenId) return;
   const input = $('contentHash').value.trim();
+  // The name this is for: the box stays live through the wallet prompt and the wait.
+  const tokenId = currentTokenId, name = currentTokenName;
 
   isProcessing = true;
   const btn = (typeof event !== 'undefined' && event?.target) || null; if (btn) btn.disabled = true;
@@ -5782,12 +6001,12 @@ async function doSetContent() {
     // Clear contenthash
     try {
       showStatus('Clearing website...', '');
-      const tx = await wcTransaction(contract.setContenthash(currentTokenId, '0x'), 'Approve clear website');
+      const tx = await wcTransaction(contract.setContenthash(tokenId, '0x'), 'Approve clear website');
       showStatus('Waiting for confirmation...', '', tx.hash);
       const receipt = await waitForTx(tx);
       showStatus('Website cleared!', 'success', tx.hash);
       $('manageForm').classList.remove('show');
-      refreshAfterTx(currentTokenName, panelRepainted, receipt); // Refresh to update manage section
+      refreshAfterTx(name, panelRepainted, receipt); // Refresh to update manage section
     } catch (e) {
       handleError(e);
     } finally {
@@ -5800,12 +6019,12 @@ async function doSetContent() {
   try {
     const contenthash = encodeContenthash(input);
     showStatus('Setting website...', '');
-    const tx = await wcTransaction(contract.setContenthash(currentTokenId, contenthash), 'Approve set website');
+    const tx = await wcTransaction(contract.setContenthash(tokenId, contenthash), 'Approve set website');
     showStatus('Waiting for confirmation...', '', tx.hash);
     const receipt = await waitForTx(tx);
-    showStatus('Website set! Visit ' + currentTokenName + '.' + WEI_GATEWAY, 'success', tx.hash);
+    showStatus('Website set! Visit ' + name + '.' + WEI_GATEWAY, 'success', tx.hash);
     $('manageForm').classList.remove('show');
-    refreshAfterTx(currentTokenName, panelRepainted, receipt); // Refresh to show updated website link
+    refreshAfterTx(name, panelRepainted, receipt); // Refresh to show updated website link
   } catch (e) {
     if (e.message?.includes('CID') || e.message?.includes('IPNS name')) {
       showStatus(e.message, 'error');
@@ -5900,7 +6119,7 @@ async function doSubdomain() {
   // label you already sold silently confiscates it. Warn before that, the way the
   // availability check on the search path already does.
   try {
-    const subId = computeIdFull(label + '.' + parentName);
+    const subId = computeIdFull(label + '.' + parentName + '.wei');
     const [held] = await aggregate3([{ target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [subId] }]);
     const holder = held && held[0];
     if (holder) {
@@ -5926,7 +6145,7 @@ async function doSubdomain() {
     $('manageForm').classList.remove('show');
     // Navigate the manage view to the new subdomain so follow-up actions
     // (Set Website, Set Text, etc.) target the subdomain, not the parent.
-    $('nameInput').value = fullName;
+    $('nameInput').value = nameForInput(fullName);
     updateHash(fullName);
     refreshAfterTx(fullName, subNameRegistered, receipt);
   } catch (e) {
@@ -5990,6 +6209,10 @@ function previewSubSalesToken() {
 
 async function showSubSalesForm() {
   const form = $('manageForm');
+  // The name this form is for. Its reads can retry for a while, and the user can look up
+  // another name meanwhile: a late answer must not paint one name's sale over another's,
+  // where Enable would then configure the shown name with the other's price and payout.
+  const tokenId = currentTokenId;
   form.innerHTML = '<div style="opacity:0.5;font-size:12px;text-align:center;">' + spinnerSVG(20) + 'Loading config…</div>';
   form.classList.add('show');
 
@@ -5997,10 +6220,11 @@ async function showSubSalesForm() {
     // Single retrying multicall so a flaky public RPC returning empty data on one
     // of these reads no longer aborts the form with a raw CALL_EXCEPTION.
     const res = await aggregate3([
-      { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'config', args: [currentTokenId] },
+      { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'config', args: [tokenId] },
       { target: CONTRACT, iface: approvalIface, fn: 'isApprovedForAll', args: [_connectedAddress, SUBDOMAIN_REGISTRAR] },
       { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'ethBalance', args: [_connectedAddress] }
     ]);
+    if (currentTokenId !== tokenId) return; // before any of the form's shared state is touched
     if (!res[0]) throw new Error('config read failed');
 
     const cfg = res[0];
@@ -6031,9 +6255,10 @@ async function showSubSalesForm() {
         // Read decimals and symbol separately: a bytes32-symbol token must not
         // lose its decimals, and a raw base-unit price must never be pre-filled.
         const rpc = await getRpc();
-        let dec = null, sym = '';
-        try { dec = await getTokenDecimals(cfgFeeToken, rpc); } catch {}
-        try { sym = await getTokenSymbol(cfgFeeToken, rpc); } catch {}
+        const [decR, symR] = await Promise.allSettled([getTokenDecimals(cfgFeeToken, rpc), getTokenSymbol(cfgFeeToken, rpc)]);
+        if (currentTokenId !== tokenId) return;
+        const dec = decR.status === 'fulfilled' ? decR.value : null;
+        const sym = symR.status === 'fulfilled' ? symR.value : '';
         // A blank price field would re-save a paid sale as free — retry instead.
         if (dec == null && cfgPrice > 0n) throw new Error('decimals unavailable');
         subSalesTokenDecimals = dec ?? 18;
@@ -6104,6 +6329,7 @@ async function showSubSalesForm() {
       <button class="secondary" onclick="$(\'manageForm\').classList.remove(\'show\')">Cancel</button>\
       <div style="font-size:10px;opacity:0.4;margin-top:12px;">Your name stays in your wallet at all times. The registrar temporarily uses it to create each subdomain, then returns it in the same transaction.</div>';
   } catch (e) {
+    if (currentTokenId !== tokenId) return;
     // Almost always a transient public-RPC hiccup — offer a retry, not a dead end.
     form.innerHTML = '<div style="font-size:12px;margin-bottom:10px;">Couldn\'t load subdomain-sales config — the network RPC didn\'t respond. This is usually temporary.</div>' +
       '<button onclick="showSubSalesForm()">Retry</button>' +
@@ -6142,6 +6368,12 @@ async function doConfigureSubSales() {
 
     if (price >= (1n << 96n)) {
       showStatus('Price too large', 'error');
+      return;
+    }
+    // A paid sale with the price left blank (its placeholder reads like a value) would
+    // otherwise go out as price 0 — an open, free sale under a "paid" setting.
+    if (subSalesFeeType !== 'free' && price === 0n) {
+      showStatus('Enter a price above 0, or choose Free', 'error');
       return;
     }
 
@@ -6247,40 +6479,54 @@ async function doWithdrawRegFees() {
   }
 }
 
-// App-configured subdomain sales are always FLASH mode (deposit() is never
-// called), so registrar.register() does name.transferFrom(controller, ...) and
-// reverts unless the parent owner still has setApprovalForAll(registrar) active.
-// The owner can revoke that out-of-band while leaving the sale enabled. Probe it
-// on the buyer path so we don't submit a guaranteed-revert tx. Returns true when
-// minting can proceed (escrow mode, approved, or on any read error — never block
-// on a flaky RPC).
-async function registrarFlashApproved(parentId) {
-  try {
-    const rpc = await getRpc();
-    const escRes = await rpc.call({ to: SUBDOMAIN_REGISTRAR, data: regIface.encodeFunctionData('escrowedController', [parentId]) });
-    if (regIface.decodeFunctionResult('escrowedController', escRes)[0] !== ethers.ZeroAddress) return true; // escrow mode: no approval needed
-    const ownerRes = await rpc.call({ to: CONTRACT, data: ownerOfIface.encodeFunctionData('ownerOf', [parentId]) });
-    const owner = ownerOfIface.decodeFunctionResult('ownerOf', ownerRes)[0];
-    const apprRes = await rpc.call({ to: CONTRACT, data: approvalIface.encodeFunctionData('isApprovedForAll', [owner, SUBDOMAIN_REGISTRAR]) });
-    return approvalIface.decodeFunctionResult('isApprovedForAll', apprRes)[0];
-  } catch (e) {
-    return true; // best-effort: a read failure must not block a legitimate mint
-  }
+// Everything a registrar mint can be refused for, in two round trips — it was up to seven,
+// one after another, before the wallet even opened:
+//  - the label's availability (the registrar's own check: a stale subdomain still has an
+//    owner but is available);
+//  - the seller's approval of the registrar. App-configured sales are FLASH mode (deposit()
+//    is never called), so register() does transferFrom(controller, …) and reverts unless the
+//    parent owner still has setApprovalForAll(registrar) on — revocable out-of-band while the
+//    sale stays enabled. An escrowed parent needs no approval;
+//  - the sale's optional token gate (Config.gateToken / minGateBalance; GateFailed);
+//  - the buyer's balance and, for a token price, allowance.
+// A read that fails never blocks a mint: each answer is permissive when unknown, and
+// balance/allowance come back null so the caller can tell unknown from zero.
+const mc3EthIface = new ethers.Interface(['function getEthBalance(address) view returns (uint256)']);
+const allowanceIface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
+async function registrarMintChecks(parentId, label, { gateToken, minGateBalance, feeToken, price }) {
+  const me = _connectedAddress;
+  const gated = !!gateToken && gateToken !== ethers.ZeroAddress && !!minGateBalance;
+  const paid = price > 0n, inToken = paid && feeToken !== ethers.ZeroAddress;
+  const calls = [
+    { target: CONTRACT, iface: iface, fn: 'isAvailable', args: [label, parentId] },
+    { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'escrowedController', args: [parentId] },
+    { target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [parentId] },
+  ];
+  if (gated) calls.push({ target: gateToken, iface: balIface, fn: 'balanceOf', args: [me] });
+  if (paid) calls.push(inToken
+    ? { target: feeToken, iface: balIface, fn: 'balanceOf', args: [me] }
+    : { target: MULTICALL3, iface: mc3EthIface, fn: 'getEthBalance', args: [me] });
+  if (inToken) calls.push({ target: feeToken, iface: allowanceIface, fn: 'allowance', args: [me, SUBDOMAIN_REGISTRAR] });
+  let r = [];
+  try { r = await aggregate3(calls); } catch (_) {}
+  let k = 3;
+  const gateBal = gated ? r[k++] : null, bal = paid ? r[k++] : null, allow = inToken ? r[k++] : null;
+  const esc = r[1] ? r[1][0] : null, owner = r[2] ? r[2][0] : null;
+  return {
+    avail: r[0] ? r[0][0] : true,
+    approved: esc === ethers.ZeroAddress && owner ? await registrarApprovedBy(owner) : true,
+    gateOk: gateBal ? gateBal[0] >= minGateBalance : true,
+    balance: bal ? bal[0] : null,
+    allowance: allow ? allow[0] : null,
+  };
 }
-
-// The registrar can gate minting on an ERC20/ERC721 balance (Config.gateToken /
-// minGateBalance) and reverts with GateFailed when it isn't met. Mirror that check so a
-// gated parent doesn't hand out a Mint button that's guaranteed to revert. Returns true
-// on any read error — a flaky RPC must not block a legitimate mint.
-async function gateSatisfied(gateToken, minGateBalance) {
-  if (!gateToken || gateToken === ethers.ZeroAddress || !minGateBalance) return true;
+// Whether a parent's owner still lets the registrar move it (flash-mode sales). True when
+// the read fails: best effort, never a reason to refuse a mint by itself.
+async function registrarApprovedBy(owner) {
   try {
-    const rpc = await getRpc();
-    const res = await rpc.call({ to: gateToken, data: balIface.encodeFunctionData('balanceOf', [_connectedAddress]) });
-    return balIface.decodeFunctionResult('balanceOf', res)[0] >= minGateBalance;
-  } catch (e) {
-    return true;
-  }
+    const [a] = await aggregate3([{ target: CONTRACT, iface: approvalIface, fn: 'isApprovedForAll', args: [owner, SUBDOMAIN_REGISTRAR] }]);
+    return a ? a[0] : true;
+  } catch (_) { return true; }
 }
 
 // Free subdomain minting for id.wei
@@ -6360,16 +6606,16 @@ async function doFreeMint() {
     // custom-RPC settings sheet) nulls that field, and reading it here would be a
     // null deref rather than a rebuilt provider.
     showFreeStatus('Checking availability...', '');
-    const freeRpc = await getRpc();
-    const [cfgRes, parentOwnerRes, escrowRes] = await Promise.all([
-      freeRpc.call({ to: SUBDOMAIN_REGISTRAR, data: regIface.encodeFunctionData('config', [ID_WEI_PARENT]) }),
-      freeRpc.call({ to: CONTRACT, data: ownerOfIface.encodeFunctionData('ownerOf', [ID_WEI_PARENT]) }),
-      freeRpc.call({ to: SUBDOMAIN_REGISTRAR, data: regIface.encodeFunctionData('escrowedController', [ID_WEI_PARENT]) })
+    // The sale's terms and the label in one read; then, from those, the registrar checks.
+    const [cfgR, ownerR, escR, availR] = await aggregate3([
+      { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'config', args: [ID_WEI_PARENT] },
+      { target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [ID_WEI_PARENT] },
+      { target: SUBDOMAIN_REGISTRAR, iface: regIface, fn: 'escrowedController', args: [ID_WEI_PARENT] },
+      { target: CONTRACT, iface: iface, fn: 'isAvailable', args: [label, ID_WEI_PARENT] },
     ]);
-    const cfg = regIface.decodeFunctionResult('config', cfgRes);
-    const parentOwner = ownerOfIface.decodeFunctionResult('ownerOf', parentOwnerRes)[0];
-    const escrowedAddr = regIface.decodeFunctionResult('escrowedController', escrowRes)[0];
-    const [cfgController, cfgEnabled, cfgFeeToken, cfgPrice, cfgGateToken, cfgMinGate] = cfg;
+    if (!cfgR || !ownerR || !escR) throw new Error('Couldn\'t read the free-name sale — try again');
+    const [cfgController, cfgEnabled, cfgFeeToken, cfgPrice, cfgGateToken, cfgMinGate] = cfgR;
+    const parentOwner = ownerR[0], escrowedAddr = escR[0];
     const currentController = escrowedAddr !== ethers.ZeroAddress ? escrowedAddr : parentOwner;
 
     if (!cfgEnabled || cfgController.toLowerCase() !== currentController.toLowerCase()) {
@@ -6382,22 +6628,28 @@ async function doFreeMint() {
       btn.disabled = false;
       return;
     }
-    if (!(await registrarFlashApproved(ID_WEI_PARENT))) {
+    // Same check the registrar makes (a stale subdomain still has an owner but is available)
+    if (availR && !availR[0]) {
+      showFreeStatus(label + '.id.wei is already taken', 'error');
+      btn.disabled = false;
+      return;
+    }
+    // Flash mode needs the owner's approval of the registrar, a gated sale the buyer's balance
+    // (see registrarMintChecks). Best effort: an unreadable answer doesn't refuse the mint.
+    const flash = escrowedAddr === ethers.ZeroAddress;
+    const gated = cfgGateToken !== ethers.ZeroAddress && cfgMinGate > 0n;
+    const second = flash || gated ? await aggregate3([
+      ...(flash ? [{ target: CONTRACT, iface: approvalIface, fn: 'isApprovedForAll', args: [parentOwner, SUBDOMAIN_REGISTRAR] }] : []),
+      ...(gated ? [{ target: cfgGateToken, iface: balIface, fn: 'balanceOf', args: [_connectedAddress] }] : []),
+    ]).catch(() => []) : [];
+    const appr = flash ? second[0] : null, gateBal = gated ? second[flash ? 1 : 0] : null;
+    if (appr && !appr[0]) {
       showFreeStatus('Free minting is temporarily unavailable — please try again later', 'error');
       btn.disabled = false;
       return;
     }
-    if (!(await gateSatisfied(cfgGateToken, cfgMinGate))) {
+    if (gateBal && gateBal[0] < cfgMinGate) {
       showFreeStatus('Free minting is token-gated — your wallet doesn\'t hold enough of the required token', 'error');
-      btn.disabled = false;
-      return;
-    }
-
-    // Same check the registrar makes (a stale subdomain still has an owner but is available)
-    let avail = true;
-    try { avail = await readContract.isAvailable(label, ID_WEI_PARENT); } catch (_) {}
-    if (!avail) {
-      showFreeStatus(label + '.id.wei is already taken', 'error');
       btn.disabled = false;
       return;
     }
@@ -6440,58 +6692,40 @@ async function doMintSubdomain() {
   const btn = (typeof event !== 'undefined' && event?.target) || null; if (btn) btn.disabled = true;
 
   try {
-    // Same check the registrar makes (a stale subdomain still has an owner but is available)
-    if (readContract) {
-      let avail = true;
-      try { avail = await readContract.isAvailable(subLabel, parentId); } catch (_) {}
-      if (!avail) {
-        showStatus(subLabel + '.' + parentName + '.wei is already taken', 'error');
-        return;
-      }
+    const checks = await registrarMintChecks(parentId, subLabel, { gateToken, minGateBalance, feeToken, price });
+    if (!checks.avail) {
+      showStatus(subLabel + '.' + parentName + '.wei is already taken', 'error');
+      return;
     }
-
     // Bail before spending gas if the seller revoked the registrar's approval.
-    if (!(await registrarFlashApproved(parentId))) {
+    if (!checks.approved) {
       showStatus("This name's owner hasn't approved the registrar — minting is temporarily unavailable", 'error');
       return;
     }
-
     // Same, for the optional token gate the seller can put on the sale.
-    if (!(await gateSatisfied(gateToken, minGateBalance))) {
+    if (!checks.gateOk) {
       showStatus('This name is token-gated — your wallet doesn\'t hold enough of the required token to mint', 'error');
       return;
     }
-
-    // Balance check
-    if (price > 0n) {
-      const rpc = await getRpc();
-      if (feeToken === ethers.ZeroAddress) {
-        const bal = await rpc.getBalance(_connectedAddress);
-        if (bal < price) {
-          showStatus('Insufficient ETH — need ' + ethers.formatEther(price) + ' ETH', 'error');
-          return;
-        }
-      } else {
-        const balRes = await rpc.call({ to: feeToken, data: balIface.encodeFunctionData('balanceOf', [_connectedAddress]) });
-        const bal = balIface.decodeFunctionResult('balanceOf', balRes)[0];
-        if (bal < price) {
-          showStatus('Insufficient ' + (symbol || 'token') + ' balance', 'error');
-          return;
-        }
-      }
+    // Balance check (unknown balance: let the wallet decide)
+    if (price > 0n && checks.balance !== null && checks.balance < price) {
+      showStatus(feeToken === ethers.ZeroAddress
+        ? 'Insufficient ETH — need ' + ethers.formatEther(price) + ' ETH'
+        : 'Insufficient ' + (symbol || 'token') + ' balance', 'error');
+      return;
     }
 
     // Handle ERC20 approval if needed
     if (feeToken !== ethers.ZeroAddress && price > 0n) {
-      const rpc = await getRpc();
-      const erc20Iface = new ethers.Interface([
-        'function allowance(address owner, address spender) view returns (uint256)'
-      ]);
-      const allowanceRes = await rpc.call({
-        to: feeToken,
-        data: erc20Iface.encodeFunctionData('allowance', [_connectedAddress, SUBDOMAIN_REGISTRAR])
-      });
-      const currentAllowance = erc20Iface.decodeFunctionResult('allowance', allowanceRes)[0];
+      let currentAllowance = checks.allowance;
+      if (currentAllowance === null) { // the batch couldn't say: ask directly, as an approve depends on it
+        const rpc = await getRpc();
+        const allowanceRes = await rpc.call({
+          to: feeToken,
+          data: allowanceIface.encodeFunctionData('allowance', [_connectedAddress, SUBDOMAIN_REGISTRAR])
+        });
+        currentAllowance = allowanceIface.decodeFunctionResult('allowance', allowanceRes)[0];
+      }
 
       if (currentAllowance < price) {
         showStatus('Approving ' + (symbol || 'token') + '...', '');
@@ -6545,6 +6779,15 @@ async function doOwnerRegisterSubdomain() {
   isProcessing = true;
   const btn = (typeof event !== 'undefined' && event?.target) || null; if (btn) btn.disabled = true;
   try {
+    // The "available" this button came from can be minutes old, and registering over a
+    // subname that exists burns it and mints it back to the parent (see doSubdomain) — say
+    // so if someone bought it through the parent's sale in the meantime.
+    try {
+      const [held] = await aggregate3([{ target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf',
+        args: [computeIdFull(subLabel + '.' + parentName + '.wei')] }]);
+      if (held && held[0] && !confirm(subLabel + '.' + parentName + '.wei was registered since you looked it up, and is held by\n'
+          + held[0] + '\n\nRe-registering it burns that NFT, clears its records and mints it to you. Continue?')) return;
+    } catch (_) { /* couldn't check — the lookup said available, so go ahead */ }
     showStatus('Registering subdomain...', '');
     const tx = await wcTransaction(contract.registerSubdomain(subLabel, parentId), 'Approve subdomain');
     showStatus('Waiting for confirmation...', '', tx.hash);
@@ -6552,7 +6795,7 @@ async function doOwnerRegisterSubdomain() {
     const fullName = subLabel + '.' + parentName;
     showStatus(fullName + '.wei registered!', 'success', tx.hash);
     // Navigate the view into the new subdomain so follow-up actions target it.
-    $('nameInput').value = fullName;
+    $('nameInput').value = nameForInput(fullName);
     updateHash(fullName);
     refreshAfterTx(fullName, subNameRegistered, receipt);
   } catch (e) {
@@ -6635,7 +6878,7 @@ function toggleSend(event) {
     if (_connectedAddress) {
       withRpc(p => p.getBalance(_connectedAddress)).then(b => { _sendBal = b; sendAmountChanged(); }).catch(() => {});
     }
-    if (!globalThis.__ethUsd) rollEthUsd().then(sendAmountChanged).catch(() => {});
+    if (!(Date.now() - (globalThis.__ethUsdAt || 0) < 60000)) rollEthUsd().then(sendAmountChanged).catch(() => {});
   }
 }
 
@@ -6801,6 +7044,11 @@ function tokenIdCandidate(part) {
 // a token the user never asked about. For an anti-spoof tool that's the worst
 // failure it has, so the id can only ever come from a segment that is entirely a
 // number or entirely a 0x-hex word.
+//
+// Only a link's path is read. Its query string and fragment are anyone's to fill: taking
+// the largest number across a whole link let a spoof's listing carry a real name's id
+// after the `?` (`…/<spoofId>?ref=<realId>`), and the verifier then vouched for the real
+// token while the page it came from showed the spoof.
 function parseTokenId(input) {
   const s = input.trim();
   if (!s) return null;
@@ -6809,16 +7057,36 @@ function parseTokenId(input) {
   const direct = tokenIdCandidate(s);
   if (direct !== null) return direct;
 
-  // Otherwise pick the largest candidate across the segments. A namehash is ~2^255,
-  // so it dominates anything else a URL carries (chain ids, query params, ports)
-  // without depending on where in the URL the id happens to sit.
+  const [path, query = ''] = s.split('#')[0].split('?');
+  const parts = path.split(/[^0-9a-zA-Z]+/).filter(Boolean);
+  // Marketplace and explorer links name their collection just before the id (OpenSea,
+  // Etherscan /nft, Blur, LooksRare, Rarible's address:id). Answer only for WNS: a
+  // look-alike collection can mint a token whose id equals a real name's.
+  const at = parts.findIndex(p => /^0x[0-9a-fA-F]{40}$/.test(p));
+  if (at >= 0) {
+    if (parts[at].toLowerCase() !== CONTRACT.toLowerCase()) return null;
+    const next = parts[at + 1] ? tokenIdCandidate(parts[at + 1]) : null;
+    if (next !== null) return next;
+    const a = /(?:^|&)a=([0-9a-zA-Z]+)(?:&|$)/.exec(query); // Etherscan's /token/<addr>?a=<id>
+    return a ? tokenIdCandidate(a[1]) : null;
+  }
+
+  // No collection named: the largest whole segment of the path. A namehash is ~2^255,
+  // so it dominates anything else a path carries (chain ids, ports).
   let best = null;
-  for (const part of s.split(/[^0-9a-zA-Z]+/)) {
-    if (!part) continue;
+  for (const part of parts) {
     const v = tokenIdCandidate(part);
     if (v !== null && (best === null || v > best)) best = v;
   }
   return best;
+}
+
+// The collection a pasted link names, when that is not WNS — so the verifier can say so
+// rather than calling it an invalid id.
+function foreignCollection(input) {
+  const path = input.trim().split('#')[0].split('?')[0];
+  const addr = path.split(/[^0-9a-zA-Z]+/).find(p => /^0x[0-9a-fA-F]{40}$/.test(p));
+  return addr && addr.toLowerCase() !== CONTRACT.toLowerCase() ? addr : null;
 }
 
 async function doVerifyNow() {
@@ -6834,7 +7102,11 @@ async function doVerifyNow() {
 
   const tokenId = parseTokenId(tokenIdInput);
   if (tokenId === null) {
-    result.innerHTML = '<span style="color:#c00;">Invalid token ID or URL</span>';
+    const other = foreignCollection(tokenIdInput);
+    result.innerHTML = other
+      ? '<span style="color:var(--bad);">That link is for another collection (' + escapeHtml(other.slice(0, 8) + '…' + other.slice(-6))
+        + '), not WNS — whatever it shows is not a .wei name</span>'
+      : '<span style="color:var(--bad);">Invalid token ID or URL</span>';
     result.style.display = 'block';
     return;
   }
@@ -6904,7 +7176,7 @@ async function doVerifyNow() {
       if (!expectedNorm) {
         html += `<div style="color:#c00;font-size:12px;">✗ Expected name "${escapeHtml(expectedInput)}" is invalid</div>`;
       } else {
-        const computedId = computeIdFull(expectedNorm);
+        const computedId = computeIdFull(expectedNorm + '.wei');
 
         if (computedId === tokenId) {
           html += `<div style="color:#080;font-size:12px;">✓ Matches expected name "${escapeHtml(expectedInput)}"</div>`;
@@ -6929,15 +7201,21 @@ initPending();
 
 // URL hash support: wei.domains/#name auto-fills and checks that name
 // Supports both top-level (wei.domains/#name) and subdomains (wei.domains/#sub.name)
-function initFromHash() {
+// `e` is the hashchange event; the call at load passes none.
+function initFromHash(e) {
   const hash = window.location.hash.slice(1); // Remove #
   if (!hash) {
     // Back-navigating from #name to the bare URL fires hashchange with an empty
     // hash. Returning here left the previous name in the box with its result panel
     // still showing, so Back appeared to do nothing. (updateHash() uses
     // replaceState, which fires no event, so this only ever runs on real
-    // navigation — and on first load the box is already empty.)
-    if ($('nameInput').value) { $('nameInput').value = ''; checkName(); }
+    // navigation.) At load the box is empty too — unless the page was slow and the
+    // visitor typed before this script ran: those keystrokes reached no handler
+    // (checkName didn't exist yet), so look up what they typed instead of wiping it.
+    if ($('nameInput').value) {
+      if (!e) { checkName(); return; }
+      $('nameInput').value = ''; checkName();
+    }
     return;
   }
   // decodeURIComponent throws URIError on a malformed escape (a bare '%', a
@@ -6946,7 +7224,9 @@ function initFromHash() {
   // listener, no wallet DOM, no connect button — wei.domains/#% was a dead page.
   let name;
   try { name = decodeURIComponent(hash); } catch (_) { name = hash; }
-  if (name.endsWith('.wei')) name = name.slice(0, -4);
+  // Drop the suffix for the box, unless what is left still ends in ".wei": #blog.wei.wei is
+  // a name under wei.wei, and the lookup strips one ".wei" of its own (see nameForInput).
+  if (name.endsWith('.wei') && !name.slice(0, -4).endsWith('.wei')) name = name.slice(0, -4);
   // Deeplink to the lottery: #roll / #lottery (with or without .wei) opens the panel.
   const token = name.toLowerCase();
   if (token === 'roll' || token === 'lottery') {
@@ -6960,13 +7240,22 @@ function initFromHash() {
   }
 }
 
+// A full name (no ".wei") as the name box and #links write it: bare — "ross", "blog.ross" —
+// unless its last label is itself "wei". Read back, a trailing ".wei" is taken as the suffix,
+// so "blog.wei" would come back as the top-level blog.wei; names under wei.wei keep theirs.
+function nameForInput(name) {
+  return name.endsWith('.wei') ? name + '.wei' : name;
+}
+
 // Update URL hash and page title when name changes
 function updateHash(name) {
   if (name) {
-    history.replaceState(null, '', '#' + encodeURIComponent(name));
+    history.replaceState(null, '', '#' + encodeURIComponent(nameForInput(name)));
     document.title = name + '.wei - WNS';
   } else {
-    history.replaceState(null, '', window.location.pathname);
+    // Keep the query string: a ?rpc= suggestion has to survive until the settings sheet is
+    // opened, and the first empty or invalid lookup used to drop it.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
     document.title = 'WNS';
   }
 }
@@ -6975,7 +7264,7 @@ function updateHash(name) {
 function copyShareLink() {
   const name = normalizeFullName($('nameInput').value);
   if (!name) return;
-  const url = window.location.origin + window.location.pathname + '#' + encodeURIComponent(name);
+  const url = window.location.origin + window.location.pathname + '#' + encodeURIComponent(nameForInput(name));
   navigator.clipboard.writeText(url).then(() => {
     showStatus('Link copied: ' + url, 'success');
   }).catch(() => {
@@ -7013,8 +7302,10 @@ let _rollBoostBps = null;             // WeiRoll.BOOST_BPS(), fetched once (a de
 // var, not let: initFromHash() runs above this line and #roll deeplinks reach
 // openRoll(), which reads _rollTimer. A let would still be in its temporal dead
 // zone there — the throw was swallowed by initFromHash's catch and silently cost
-// the deeplink its scroll, title and countdown timer.
-var _rollTimer = null;
+// the deeplink its scroll, title and countdown timer. And no initializer: by the
+// time this line runs, a deeplink has already stored its interval here, and `= null`
+// orphaned it — closeRoll() could no longer stop it and the next open started a second.
+var _rollTimer;
 const rollIface = new ethers.Interface(LOTTERY_ABI);
 
 // What the user has typed into the entry box, kept outside the DOM because
@@ -7043,7 +7334,7 @@ function rollPanelOpen() {
 function rollTokenFor(raw) {
   const name = normalizeFullName(raw || '');
   if (!name) return null;
-  return { name, id: computeIdFull(name) };
+  return { name, id: computeIdFull(name + '.wei') };
 }
 
 // Gas-aware drawPrice() quote.
@@ -7073,14 +7364,16 @@ async function rollDrawQuote(p) {
     const fd = await p.getFeeData();
     gasPrice = fd.maxFeePerGas || fd.gasPrice || 0n;
   } catch (_) {}
+  // No gas price, no quote: the unpriced call below reads exactly 0, and a zero quote would
+  // send rollDrawValue's 0.01 ETH last resort, which reverts Underpaid above ~27 gwei. Throwing
+  // lets withRpc retry, and the callers then say the draw couldn't be priced.
+  if (gasPrice <= 0n) throw new Error('could not read a gas price to quote the draw at');
 
-  if (gasPrice > 0n) {
-    try {
-      const res = await p.call({ to: LOTTERY, data, gasPrice });
-      const price = rollIface.decodeFunctionResult('drawPrice', res)[0];
-      if (price > 0n) return { price, gasPrice, priced: true };
-    } catch (_) {}
-  }
+  try {
+    const res = await p.call({ to: LOTTERY, data, gasPrice });
+    const price = rollIface.decodeFunctionResult('drawPrice', res)[0];
+    if (price > 0n) return { price, gasPrice, priced: true };
+  } catch (_) {}
 
   const res = await p.call({ to: LOTTERY, data });
   const floor = rollIface.decodeFunctionResult('drawPrice', res)[0];
@@ -7132,7 +7425,7 @@ function closeRoll() {
   // Only clear the hash if it is ours, so closing the panel never clobbers a name deeplink.
   const h = window.location.hash.slice(1).toLowerCase().replace(/\.wei$/, '');
   if (h === 'roll' || h === 'lottery') {
-    history.replaceState(null, '', window.location.pathname);
+    history.replaceState(null, '', window.location.pathname + window.location.search);
     document.title = 'WNS';
   }
 }
@@ -7142,15 +7435,18 @@ var _rollEdgeFor = 0, _rollTicks = 0;   // only read by the interval, which star
 
 function rollTick() {
   try {
-    if (document.hidden) return;
+    if (document.hidden || !rollPanelOpen()) return;
     const el = document.getElementById('rollCountdown');
     const end = el ? Number(el.dataset.end || 0) : 0;
     if (end) {
       const left = end - Math.floor(Date.now() / 1000);
       el.textContent = fmtCountdown(left);
       // Refresh once the deadline passes (with slack for block time) so the
-      // panel moves on to the draw instead of offering an entry that reverts.
-      if (left <= -15 && _rollEdgeFor !== end) { _rollEdgeFor = end; refreshRoll(); }
+      // panel moves on to the draw instead of offering an entry that reverts —
+      // and again every 30s while it still reads as open: a fast local clock or a
+      // node a few blocks behind can answer the first refresh with the old phase,
+      // which repaints the same deadline and would otherwise never be re-asked.
+      if (left <= -15 && (_rollEdgeFor !== end || left % 30 === 0)) { _rollEdgeFor = end; refreshRoll(); }
     }
     // While a draw is ready or in flight, re-read every minute
     if (++_rollTicks % 60 === 0 && (_rollPhase === 2 || _rollPhase === 3)) refreshRoll();
@@ -7200,7 +7496,7 @@ function fmtAgo(secs) {
 
 // A field/winner name that links to its profile via the dapp's #name view.
 function rollNameLink(full) {
-  const label = full.endsWith('.wei') ? full.slice(0, -4) : full;
+  const label = nameForInput(full.endsWith('.wei') ? full.slice(0, -4) : full);
   return '<a href="#' + encodeURIComponent(label) + '" class="roll-name-link">' + escapeHtml(full) + '</a>';
 }
 
@@ -7321,8 +7617,7 @@ async function rollBuildField(tickets, me) {
   const calls = [];
   if (me) for (const t of all) calls.push({ target: CONTRACT, iface: ownerOfIface, fn: 'ownerOf', args: [t.tokenId] });
   for (const t of shown) calls.push({ target: CONTRACT, iface: iface, fn: 'getFullName', args: [t.tokenId] });
-  const res = [];
-  for (let i = 0; i < calls.length; i += 250) res.push(...await aggregate3(calls.slice(i, i + 250)));
+  const res = await aggregate3Chunked(calls, 250);
 
   const meLc = (me || '').toLowerCase();
   const owners = meLc ? all.map((_, i) => (res[i] ? String(res[i][0]).toLowerCase() : null))
@@ -7350,7 +7645,7 @@ async function rollEthUsd() {
   const answer = await withRpc(p =>
     new ethers.Contract(CHAINLINK_ETHUSD, ['function latestAnswer() view returns (int256)'], p).latestAnswer());
   const usd = Number(answer) / 1e8;
-  if (usd > 0) { _rollEthUsd = { v: usd, at: Date.now() }; globalThis.__ethUsd = usd; }
+  if (usd > 0) { _rollEthUsd = { v: usd, at: Date.now() }; globalThis.__ethUsd = usd; globalThis.__ethUsdAt = Date.now(); }
   return usd > 0 ? usd : null;
 }
 
@@ -7641,6 +7936,45 @@ async function rollDetectBoost(tokenId) {
     }
     return { pid: 0, sure: !unread };
   } catch (_) { return { pid: 0, sure: false }; }
+}
+
+// rollDetectBoost for a whole batch, answer for answer, in three round trips rather than three
+// per name. Fifty ticked names used to fire 150 reads at once at rate-limited public endpoints,
+// and the throttling that caused is exactly what turns into "could not check".
+async function rollDetectBoosts(tokenIds) {
+  const none = (sure) => tokenIds.map(() => ({ pid: 0, sure }));
+  if (!tokenIds.length) return [];
+  try {
+    const weiDaoIface = new ethers.Interface(WEIDAO_ABI);
+    const cnt = await aggregate3([{ target: WEIDAO, iface: weiDaoIface, fn: 'proposalCount', args: [] }]);
+    if (!cnt[0]) return none(false);
+    const count = Number(cnt[0][0]);
+    if (!count) return none(true);
+    const pids = [];
+    for (let i = count; i >= 1; i--) pids.push(i); // newest first, as rollDetectBoost
+    // Every (name, proposal) pair, in slices that keep one eth_call well inside node limits.
+    const pairs = [];
+    for (const id of tokenIds) for (const pid of pids) pairs.push([pid, id]);
+    const sup = await aggregate3Chunked(pairs.map(([pid, id]) =>
+      ({ target: WEIDAO, iface: weiDaoIface, fn: 'supportOf', args: [pid, id] })), 400);
+    // Whether each backed proposal is still open, read once however many names back it.
+    const backed = [...new Set(pairs.filter((_, i) => sup[i] && sup[i][0] > 0n).map(([pid]) => pid))];
+    const props = backed.length ? await aggregate3(backed.map(pid =>
+      ({ target: WEIDAO, iface: weiDaoIface, fn: 'proposals', args: [pid] }))) : [];
+    const open = new Map(backed.map((pid, i) => [pid, props[i]]));
+    return tokenIds.map((_, n) => {
+      let unread = false;
+      for (let k = 0; k < pids.length; k++) {
+        const s = sup[n * pids.length + k];
+        if (s === null) { unread = true; continue; }
+        if (!(s[0] > 0n)) continue;
+        const pr = open.get(pids[k]);
+        if (!pr) { unread = true; continue; }
+        if (!pr.executed && !pr.vetoed) return { pid: pids[k], sure: true };
+      }
+      return { pid: 0, sure: !unread };
+    });
+  } catch (_) { return none(false); }
 }
 
 let rollPreviewDebounce = null;
@@ -7953,10 +8287,7 @@ async function namesRead(ids) {
     calls.push({ target: CONTRACT, iface: iface, fn: 'getFullName', args: [id] });
     calls.push({ target: CONTRACT, iface: iface, fn: 'records', args: [id] });
   }
-  const res = [];
-  for (let i = 0; i < calls.length; i += NAMES_CHUNK) {
-    res.push(...await aggregate3(calls.slice(i, i + NAMES_CHUNK)));
-  }
+  const res = await aggregate3Chunked(calls, NAMES_CHUNK);
   return ids.map((id, i) => {
     const own = res[i * 3], full = res[i * 3 + 1], rec = res[i * 3 + 2];
     if (!own || !rec) return null;
@@ -7987,7 +8318,8 @@ function namesRoot(full) {
 // in hand, so only the rest cost anything — and only when a subdomain sits under
 // one, which for most holders is no extra call at all.
 async function namesRootExpiry(rows) {
-  const known = {};
+  // No prototype: `in` must not find "constructor" or "__proto__", both valid labels.
+  const known = Object.create(null);
   for (const r of rows) if (r && r.parent === 0n && r.label) known[r.label] = r.expiresAt;
   const missing = [...new Set(rows
     .filter(r => r && r.parent !== 0n && r.name)
@@ -8218,7 +8550,7 @@ function namesRow(r, st, now) {
     ? '<div class="names-row dim"><span class="n">' + escapeHtml(r.label)
       + (r.sub ? '' : '.wei') + tag + '</span>' + when + '</div>'
     : '<a class="names-row' + (dim ? ' dim' : '') + '" href="#'
-      + encodeURIComponent(r.name.replace(/\.wei$/, '')) + '" onclick="namesPick()">'
+      + encodeURIComponent(nameForInput(r.name.replace(/\.wei$/, ''))) + '" onclick="namesPick()">'
       + '<span class="n">' + escapeHtml(r.name) + tag + '</span>' + when + '</a>';
   // Up to two independent checkbox columns — renewal and roll entry — each gated on its own
   // control being on. Either, both or neither; the wrapper only appears when at least one does.
@@ -8390,11 +8722,7 @@ async function namesRollScan(rows) {
     // gas ceiling namesRead already chunks around, just from a different reader. NAMES_CHUNK
     // itself is tuned for 3 subcalls per name; rounded down to the nearest even number here so
     // a chunk boundary never splits one name's weightOf/ticketOf pair across two calls.
-    const chunk = NAMES_CHUNK - (NAMES_CHUNK % 2);
-    const res = [];
-    for (let i = 0; i < calls.length; i += chunk) {
-      res.push(...await aggregate3(calls.slice(i, i + chunk)));
-    }
+    const res = await aggregate3Chunked(calls, NAMES_CHUNK - (NAMES_CHUNK % 2));
     if (seq !== _namesRollSeq) return;
 
     const byId = new Map();
@@ -8579,19 +8907,21 @@ async function rollEnterAtomic(picked, pids) {
   });
   const bundleId = typeof res === 'string' ? res : (res && res.id);
   showStatus('Submitted — confirming…', '');
-  const st = bundleId ? await rollPollCallsStatus(bundleId) : null;
+  // Up to a minute: a bundler or a 7702 wallet can take several blocks to land a batch, and a
+  // rescan that reads the round from before inclusion offers the same names again.
+  const st = bundleId ? await rollPollCallsStatus(bundleId, 40) : null;
   const code = st && st.status;
   // 600 = partial: with atomicRequired false some calls may have landed — the rescan says which.
   if ((typeof code === 'number' && code >= 400 && code !== 600) || code === 'FAILED') {
     showStatus('The wallet reports the batch failed. Rescanning…', 'error');
     return null;
   }
+  showStatus(picked.length + ' name' + (picked.length === 1 ? '' : 's')
+    + ' submitted to the round. Rescanning to confirm which landed…', 'success');
   // A receipt to wait on, so the rescan doesn't read the round from before inclusion.
   const rc = st && Array.isArray(st.receipts) && st.receipts[st.receipts.length - 1];
   if (!rc) await new Promise(r => setTimeout(r, 12000)); // status unknown: give it about a block
   return rc ? { hash: rc.transactionHash, blockNumber: Number(rc.blockNumber) } : null;
-  showStatus(picked.length + ' name' + (picked.length === 1 ? '' : 's')
-    + ' submitted to the round. Rescanning to confirm which landed…', 'success');
 }
 
 // The fallback: one enter() per name, each its own signed transaction. Independent actions, so
@@ -8641,7 +8971,7 @@ async function doEnterRollMany() {
 
     // Same boost check as a single entry: entering unboosted locks that in for the round.
     showStatus('Checking governance boosts…', '');
-    const boosts = await Promise.all(picked.map(r => rollDetectBoost(r.id)));
+    const boosts = await rollDetectBoosts(picked.map(r => r.id));
     const pids = boosts.map(b => b.pid);
     if (boosts.some(b => !b.pid && !b.sure) &&
         !confirm('Could not check whether some of these names back a live proposal (the RPC is busy).\n\n' +
@@ -8724,11 +9054,14 @@ function namesRender() {
 
   // At most one banner, and only for the thing with a deadline on it.
   if (grace.length) {
-    const last = Math.max.apply(null, grace.map(r => r.expires)) + NAMES_GRACE;
+    // The earliest deadline is the one that matters: the latest would tell the holder they
+    // have until a date by which the first of these names is already anyone's.
+    const ends = grace.map(r => r.expires + NAMES_GRACE);
+    const first = Math.min.apply(null, ends);
     h += '<div class="names-alert"><b>' + grace.length + ' name'
        + (grace.length === 1 ? ' has' : 's have') + ' expired.</b> Renewal is still open, at the '
-       + 'ordinary fee. From ' + namesDate(last) + ' anyone can register '
-       + (grace.length === 1 ? 'it' : 'them') + '.</div>';
+       + 'ordinary fee. From ' + namesDate(first) + ' anyone can register '
+       + (grace.length === 1 ? 'it' : ends.every(t => t === first) ? 'them' : 'the first of them') + '.</div>';
   } else if (soon.length) {
     h += '<div class="names-alert">' + soon.length + ' name' + (soon.length === 1 ? '' : 's')
        + ' expiring within ' + Math.round(NAMES_SOON / 86400) + ' days. Renewal extends from the '

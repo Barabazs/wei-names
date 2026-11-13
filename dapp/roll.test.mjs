@@ -43,11 +43,11 @@ function lift(name) {
 }
 
 const LIFTED = [
-  'tokenIdCandidate', 'parseTokenId',
+  'tokenIdCandidate', 'parseTokenId', 'foreignCollection', 'nameForInput',
   'normalizeLabelContract', 'normalizeLabel', 'topLevelLabel', 'normalizeFullName', 'computeIdFull',
   'rollTokenFor', 'rollDrawQuote', 'rollDrawValue', 'rollPanelOpen',
   'rollNameChanged', 'rollPreviewWeight', 'rollEnter', 'rollOnConnect', 'rollOnDisconnect',
-  'rollDetectBoost', 'rollBoostBps', 'rollBuildField',
+  'rollDetectBoost', 'rollBoostBps', 'rollBuildField', 'aggregate3Chunked',
   'renderRoll', 'fmtCountdown', 'fmtEth', 'escapeHtml', 'afterReceipt', 'readSideHasTx',
   'fmtUsd', 'fmtAgo', 'rollNameLink', 'fmtPot', 'rollPct', 'rollDonate', 'rollDonateChanged',
 ];
@@ -175,6 +175,21 @@ function eq(name, got, want) {
   eq('parseTokenId: address alone is not an id', p(ADDR), null);
   eq('parseTokenId: url with no id at all', p(`https://opensea.io/assets/ethereum/${ADDR}`), null);
   eq('parseTokenId: junk', p('hello world'), null);
+  // A spoof's listing can carry a real name's (larger) id after `?` or `#`; the id is the
+  // one in the path, the one the page shows.
+  const SMALL = '1234567890123456789012345678901234567890';
+  eq('parseTokenId: an id planted in the query is ignored', p(`https://opensea.io/assets/ethereum/${ADDR}/${SMALL}?ref=${ID}`), BigInt(SMALL));
+  eq('parseTokenId: … and in the fragment', p(`https://opensea.io/assets/ethereum/${ADDR}/${SMALL}#${ID}`), BigInt(SMALL));
+  // Another collection's link is never answered for, even when its id equals a WNS id.
+  const FAKE = '0x1111111111111111111111111111111111111111';
+  eq('parseTokenId: another collection is refused', p(`https://opensea.io/assets/ethereum/${FAKE}/${ID}`), null);
+  eq('foreignCollection: names it', run(`foreignCollection(${JSON.stringify(`https://opensea.io/assets/ethereum/${FAKE}/${ID}`)})`), FAKE);
+  eq('foreignCollection: not for WNS', run(`foreignCollection(${JSON.stringify(`https://opensea.io/assets/ethereum/${ADDR}/${ID}`)})`), null);
+  eq('parseTokenId: lowercase collection address', p(`https://opensea.io/item/ethereum/${ADDR.toLowerCase()}/${ID}`), BigInt(ID));
+  eq('parseTokenId: no scheme', p(`opensea.io/assets/ethereum/${ADDR}/${ID}`), BigInt(ID));
+  eq('parseTokenId: rarible address:id', p(`https://rarible.com/token/${ADDR}:${ID}`), BigInt(ID));
+  eq('parseTokenId: etherscan ?a=', p(`https://etherscan.io/token/${ADDR}?a=${ID}`), BigInt(ID));
+  eq('parseTokenId: etherscan ?a= holder address is not an id', p(`https://etherscan.io/token/${ADDR}?a=${FAKE}`), null);
 }
 
 // ── rollTokenFor: same normalization as the rest of the app ───────────────────
@@ -188,6 +203,17 @@ function eq(name, got, want) {
   eq('rollTokenFor: empty is null', run(`rollTokenFor('')`), null);
   eq('rollTokenFor: whitespace is null', run(`rollTokenFor('   ')`), null);
   eq('rollTokenFor: invalid label is null', run(`rollTokenFor('not a name')`), null);
+  // Names under the registered wei.wei: a last label of "wei" is a label, not the suffix.
+  eq('rollTokenFor: a name under wei.wei', run(`rollTokenFor('blog.wei.wei').id`), BigInt(ethers.namehash('blog.wei.wei')));
+  eq('rollTokenFor: wei.wei itself', run(`rollTokenFor('wei.wei').id`), BigInt(ethers.namehash('wei.wei')));
+  eq('rollTokenFor: and the top-level blog.wei is still itself', run(`rollTokenFor('blog.wei').id`), BigInt(ethers.namehash('blog.wei')));
+  eq('nameForInput: plain names stay bare', run(`nameForInput('ross')`), 'ross');
+  eq('nameForInput: subnames stay bare', run(`nameForInput('blog.ross')`), 'blog.ross');
+  eq('nameForInput: wei itself stays bare', run(`nameForInput('wei')`), 'wei');
+  eq('nameForInput: under wei.wei keeps its suffix', run(`nameForInput('blog.wei')`), 'blog.wei.wei');
+  for (const n of ['ross', 'blog.ross', 'wei', 'blog.wei', 'a.blog.wei']) {
+    eq(`nameForInput round-trips through the lookup: ${n}`, run(`normalizeFullName(nameForInput(${JSON.stringify(n)}))`), n);
+  }
 }
 
 // ── the typed name survives a panel repaint ──────────────────────────────────

@@ -51,7 +51,8 @@ cd posts/poster && POSTER_TRUSTED_SETUP=trusted_setup.txt python -m unittest tes
 ```bash
 npm run test:dapp    # wallet connect paths, roll.wei panel / token-id parsing,
                      # manage panel, random-name draw (ENS log decoding + screening),
-                     # owned-names scan (Transfer log -> ownerOf, expiry classing)
+                     # owned-names scan (Transfer log -> ownerOf, expiry classing),
+                     # pending commitments (per-account secrets, queued reveal)
 ```
 Both suites lift functions straight out of the shipping source (`index.html`,
 `wallet.js`) into a `vm` sandbox with a DOM shim — no network, no chain, no deps

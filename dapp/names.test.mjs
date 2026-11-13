@@ -75,7 +75,7 @@ const CONSTS = ['NAMES_DEPLOY_BLOCK', 'NAMES_TRANSFER', 'NAMES_LOG_FIRST', 'NAME
   'NAMES_SOON', 'NAMES_CHUNK', 'NAMES_RANK', 'LOG_ENDPOINTS_FIRST', 'NAMES_MAX_RENEWALS',
   'MAX_TERMS', 'NAMES_MAX_ROLL_ENTRIES', 'LOTTERY', 'LOTTERY_ABI', 'rollIface'];
 
-const ALL = ['anyEndpoint', 'namesLogs', 'namesReceived', 'namesRead', 'namesRoot', 'namesRootExpiry',
+const ALL = ['anyEndpoint', 'aggregate3Chunked', 'nameForInput', 'namesLogs', 'namesReceived', 'namesRead', 'namesRoot', 'namesRootExpiry',
   'namesClassify', 'namesOrder', 'namesScan', 'namesError', 'namesDate', 'namesDays',
   'namesWhen', 'namesRow', 'namesPick', 'namesFooter', 'namesRender', 'namesPanelOpen',
   'namesSetToggle', 'toggleNames', 'namesOnConnect', 'namesOnDisconnect',

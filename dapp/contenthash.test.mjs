@@ -110,6 +110,8 @@ const JUNK = [
   ['two-char IPNS name',    '/ipns/kx'],
   ['stub base16 CID',       'f12'],
   ['padded-but-wrong CID',  'bafaaaaaaaaaa'],
+  // An IPFS CID behind ipns:// is well formed but not a libp2p-key; gateways refuse it.
+  ['IPFS CID as an IPNS name', 'ipns://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi'],
 ];
 for (const [label, input] of JUNK) {
   let threw = false, encoded = null;
