@@ -232,15 +232,15 @@ const CV ="0x0000005260725eee99704957218d4045a50c2051";
 const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
             "https://mainnet.gateway.tenderly.co","https://eth-mainnet.public.blastapi.io",
             "https://rpc.mevblocker.io"];
-// eth_getLogs over the DAO's whole history. Tenderly serves the full range (address filter,
-// deploy block to latest) with a CORS header; mevblocker now caps a range at 10k blocks, so it
-// only serves fillDescriptions' narrow per-proposal lookups. Its paths share a backend that
-// intermittently answers "service temporarily unavailable", so it gets several goes.
-// Then the connected wallet's own node. drpc says 10k blocks but refuses 1k; flashbots
-// says 100k but refuses that too; publicnode, blastapi, 1rpc, blockrazor refuse outright.
-const LOG_RPCS=["https://mainnet.gateway.tenderly.co","https://rpc.mevblocker.io",
-                "https://rpc.mevblocker.io/fast","https://rpc.mevblocker.io/noreverts",
-                "https://rpc.mevblocker.io/fullprivacy","https://rpc.mevblocker.io"];
+// eth_getLogs. Only tenderly serves a history-wide range (address filter, deploy block to
+// latest) with a CORS header, and it rate-limits or resets connections for some visitors.
+// mevblocker and buidlguidl serve up to 10k blocks a call (buidlguidl strictly), so they take
+// narrow lookups whole and a wide one in chunks. drpc caps at 100 blocks; flashbots, publicnode,
+// blastapi, 1rpc, blockrazor refuse. (rpc.buidlguidl.com is a landing page, not the RPC.)
+// buidlguidl stays out of RPCS: its per-visitor budget is small, and log chunks need all of it.
+const WIDE_LOG_RPCS=["https://mainnet.gateway.tenderly.co"];
+const CHUNK_LOG_RPCS=["https://rpc.mevblocker.io","https://mainnet.rpc.buidlguidl.com"];
+const LOG_CHUNK=9000;   // under both 10k caps, with room for the head to move mid-scan
 const DEPLOY=24360470;
 const TRANSFER="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const CREATED="0x89a1e7f6c86a8312d520db22d098e313e9013dfe6dc5c4afcdd096e04447c353";
@@ -349,24 +349,86 @@ async function logsAt(url,filter,from,to){
   if(!Array.isArray(r.result)) throw new Error(url+": no result");
   return r.result;
 }
-let logWinner=null;   // whichever endpoint served last, tried first next time
-async function getLogs(filter,from,to){
-  let last;
-  // The winner moves to the front; repeats in LOG_RPCS (mevblocker's extra goes) stay put.
-  const order=LOG_RPCS.slice(), w=order.indexOf(logWinner);
-  if(w>0){ order.splice(w,1); order.unshift(logWinner); }
-  for(const url of order){
-    try{ const r=await logsAt(url,filter,from,to); logWinner=url; return r; }
-    catch(e){ last=e; await sleep(200); }
+// Per-host cooldown for log endpoints: a 429 or error doubles a host's rest (1s up to 16s),
+// a network failure (reset, blocked) rests it a minute, a success clears it. Requests go to
+// whichever host is free soonest and wait when every one is resting, so the last endpoint
+// standing throttles a scan rather than failing it.
+const LOG_REST=new Map(), LOG_PENALTY=new Map(), LOG_BUSY=new Map();
+// Requests in flight per host. buidlguidl serves chunks back to back all day but 429s as soon
+// as a few overlap from one visitor, so it takes one at a time.
+const LOG_CONC={"https://mainnet.rpc.buidlguidl.com":1};
+function logFailed(u,e){
+  const net=/failed to fetch|networkerror|load failed|abort|timeout/i.test(String(e&&e.message||e));
+  const ms=net?60000:Math.min(16000,(LOG_PENALTY.get(u)||500)*2);
+  LOG_PENALTY.set(u,ms); LOG_REST.set(u,Date.now()+ms);
+}
+function pickLogHost(list,skew){
+  const now=Date.now(); let best=list[0], wait=Infinity;
+  for(let j=0;j<list.length;j++){
+    const u=list[(j+skew)%list.length];
+    let w=Math.max(0,(LOG_REST.get(u)||0)-now);
+    if((LOG_BUSY.get(u)||0)>=(LOG_CONC[u]||4)) w=Math.max(w,250);
+    if(w<wait){ wait=w; best=u; }
   }
-  if(PROV){
-    try{
-      const r=await PROV.request({method:"eth_getLogs",params:[{...filter,
-        fromBlock:blockTag(from),toBlock:blockTag(to)}]});
-      if(Array.isArray(r)) return r;
-    }catch(e){ last=e; }
+  return [best,wait];
+}
+async function logsFrom(list,filter,from,to,tries=8,skew=0){
+  let last;
+  for(let t=0;t<tries;){
+    const [u,wait]=pickLogHost(list,skew+t);
+    if(wait){ await sleep(wait); continue; }   // then pick again: another host may be free first
+    LOG_BUSY.set(u,(LOG_BUSY.get(u)||0)+1); t++;
+    try{ const r=await logsAt(u,filter,from,to); LOG_PENALTY.delete(u); return r; }
+    catch(e){ last=e; logFailed(u,e); }
+    finally{ LOG_BUSY.set(u,LOG_BUSY.get(u)-1); }
   }
   throw last;
+}
+async function logsWallet(filter,from,to){
+  const r=await ask("eth_getLogs",[{...filter,fromBlock:blockTag(from),toBlock:blockTag(to)}],20000);
+  if(!Array.isArray(r)) throw new Error("the wallet returned no logs");
+  return r;
+}
+// A wide range in LOG_CHUNK pieces across the chunk endpoints, four in flight. A piece that
+// never lands fails the scan, since a gap would read as "no logs here". The last piece ends
+// at the caller's own end ("latest"), never at a head number that may lag.
+async function logsChunked(filter,from,to){
+  let top=to;
+  if(typeof top!=="number"){
+    const [r]=await post(pickLogHost(CHUNK_LOG_RPCS,0)[0],
+      [{jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}]).catch(()=>[{}]);
+    top=r.result?Number(BigInt(r.result)):Number(BigInt(await one("eth_blockNumber",[])));
+  }
+  const pieces=[];
+  for(let a=from;a<=top;a+=LOG_CHUNK){ const z=a+LOG_CHUNK-1; pieces.push([a,z>=top?to:z]); }
+  const out=new Array(pieces.length);
+  let next=0, failed=null;
+  await Promise.all([0,1,2,3].map(async k=>{
+    while(next<pieces.length&&!failed){
+      const i=next++;
+      try{ out[i]=await logsFrom(CHUNK_LOG_RPCS,filter,pieces[i][0],pieces[i][1],8,i+k); }
+      catch(e){ failed=e; }
+    }
+  }));
+  if(failed) throw failed;
+  return out.flat();
+}
+// A range of at most LOG_CHUNK goes whole to any log endpoint; a wider one tries the
+// history-wide endpoint and the wallet, then falls back to chunks unless `chunk` is false.
+async function getLogs(filter,from,to,chunk=true){
+  const narrow=typeof to==="number"&&to-from+1<=LOG_CHUNK;
+  if(narrow){
+    try{ return await logsFrom([...WIDE_LOG_RPCS,...CHUNK_LOG_RPCS],filter,from,to); }
+    catch(e){ if(!PROV) throw e; return await logsWallet(filter,from,to); }
+  }
+  for(const u of WIDE_LOG_RPCS){
+    try{ const r=await logsAt(u,filter,from,to); LOG_PENALTY.delete(u); return r; }
+    catch(e){ logFailed(u,e); }
+  }
+  if(PROV){ try{ return await logsWallet(filter,from,to); }catch(_){} }
+  if(!chunk) throw new Error("no endpoint served the whole range");
+  console.warn("log scan: no endpoint served the whole range, chunking");
+  return await logsChunked(filter,from,to);
 }
 function log(m,c){ $("log").insertAdjacentHTML("beforeend",`<div class="${c||''}">${m}</div>`); }
 function utf8(hexBody){
@@ -432,9 +494,21 @@ function addDescriptions(ls){
     DESCS[id]={desc:readString(raw,3),who:readString(raw,4),tx:l.transactionHash};
   }
 }
+// The history-wide scan, whole only. When no endpoint takes it, descriptions come from the
+// names and narrow lookups first, and the chunked scan (slow: ~110 pieces) runs after them
+// for the proposer names — so a dead endpoint costs seconds of "loading", not minutes.
+let WIDE_FAILED=false, CHUNKING=null;
+const CREATED_FILTER={address:DAO,topics:[CREATED]};
 async function loadDescriptions(){
-  try{ addDescriptions(await getLogs({address:DAO,topics:[CREATED]},DAO_DEPLOY,"latest")); }
-  catch(e){ console.warn("description recovery failed",e); }
+  try{ addDescriptions(await getLogs(CREATED_FILTER,DAO_DEPLOY,"latest",false)); WIDE_FAILED=false; }
+  catch(e){ WIDE_FAILED=true; console.warn("description scan: no endpoint took the whole range",e); }
+}
+function chunkDescriptions(){
+  if(CHUNKING||!WIDE_FAILED) return;
+  CHUNKING=logsChunked(CREATED_FILTER,DAO_DEPLOY,"latest")
+    .then(ls=>{ addDescriptions(ls); WIDE_FAILED=false; if(PROPS.length) renderProposals(); })
+    .catch(e=>console.warn("chunked description scan failed",e))
+    .finally(()=>{ CHUNKING=null; });
 }
 // The block nearest unix time `ts`, stepped in from the head on the 12s slot clock (missed
 // slots make one plain estimate drift), plus the head itself.
@@ -662,8 +736,7 @@ async function discover(addr){
        if(c&&Array.isArray(c.ids)&&Date.now()-c.at<CACHE_TTL) ids=c.ids; }catch(_){}
   if(!ids){
     $("pf").textContent="scanning Transfer logs…";
-    const latest=Number(BigInt(await one("eth_blockNumber",[])));
-    const ls=await getLogs({address:NFT,topics:[TRANSFER,null,"0x"+addr.slice(2).padStart(64,"0")]},DEPLOY,latest);
+    const ls=await getLogs({address:NFT,topics:[TRANSFER,null,"0x"+addr.slice(2).padStart(64,"0")]},DEPLOY,"latest");
     ids=[...new Set(ls.map(l=>l.topics[3]))];
     try{ localStorage.setItem(CKEY(addr),JSON.stringify({at:Date.now(),ids})); }catch(_){}
   }
@@ -906,6 +979,7 @@ async function withDescriptions(){
   if(PROPS.length) await fillDescriptions();
   DESC_PENDING=false;
   if(PROPS.length) renderProposals();
+  chunkDescriptions();   // proposer names, in the background, only if the whole scan failed
 }
 // One refresh at a time; a call that lands mid-refresh (a tx confirming, a click) gets one
 // more full pass afterwards instead of a second, overlapping one painting older state last.
