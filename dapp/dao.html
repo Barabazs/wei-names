@@ -257,7 +257,7 @@ const S={proposalCount:"da35c664",proposals:"013cf08b",convictionOf:"cea5b888",t
          supportOf:"02cd4a68",support:"9be56c67",unsupport:"84a1faba",execute:"fe0d94c1",
          propose:"82ff16c1",veto:"1d28dec7",vetoer:"d8bff440",executor:"c34c08e5",
          vetoable:"6be60ea0",vprops:"fda54c16",multicall:"ac9650d8",ownerOf:"6352211e",records:"34461067",
-         computeId:"fb021939",primaryName:"eba951aa",reverseResolve:"9af8b7aa",resolve:"4f896d4f",owner:"8da5cb5b"};
+         computeId:"fb021939",text:"308e3386",primaryName:"eba951aa",reverseResolve:"9af8b7aa",resolve:"4f896d4f",owner:"8da5cb5b"};
 let NAMES=[], PROPS=[], ACCT=null, PROV=null, DAOINFO=null;
 const NFT_OWNER_EXPECT=()=>DAO.toLowerCase();
 const $=id=>document.getElementById(id);
@@ -401,6 +401,31 @@ function daysToReach(C,W,T){
 
 /* ---------------- DAO state + proposals ---------------- */
 let DESCS={};   // id -> {desc, who, tx}   recovered from ProposalCreated logs
+let NAMEDESCS={}; // id -> description     the <id>.dao.wei text record, read by eth_call
+let DESC_PENDING=true;   // a source is still out; say "loading", not "missing"
+// abi.encode of one string argument, after the head word(s) already written
+function encStr(str){
+  const hex=Array.from(new TextEncoder().encode(str)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  return h(hex.length/2)+hex.padEnd(Math.ceil(hex.length/64)*64,"0");
+}
+// Each proposal's <id>.dao.wei description, by plain eth_call: computeId(name) then text(id).
+// Every endpoint serves these quickly, unlike the history-wide log scan, so this is what
+// usually paints first; the logs still cover a proposal whose name was never written.
+async function loadNameDescriptions(){
+  const ids=PROPS.filter(p=>!p.unread&&!(p.id in NAMEDESCS)).map(p=>p.id);
+  if(!ids.length) return false;
+  const {out:nodes}=await callMany(ids.map(i=>({to:NFT,data:"0x"+S.computeId+h(32)+encStr(i+".dao.wei")})));
+  const idx=ids.map((_,k)=>k).filter(k=>nodes[k]);
+  const {out}=await callMany(idx.map(k=>({to:NFT,
+    data:"0x"+S.text+nodes[k].slice(2,66)+h(64)+encStr("description")})));
+  let found=false;
+  idx.forEach((k,j)=>{
+    if(!out[j]||out[j].length<130) return;
+    const d=readString(out[j].slice(2),0);
+    NAMEDESCS[ids[k]]=d; if(d) found=true;
+  });
+  return found;
+}
 function addDescriptions(ls){
   for(const l of ls){
     const id=Number(BigInt(l.topics[1])), raw=l.data.slice(2);
@@ -428,7 +453,7 @@ async function blockAt(ts){
 // every log endpoint serves. True if that found anything new.
 async function fillDescriptions(){
   let found=false;
-  for(const p of PROPS.filter(p=>!p.unread&&p.created&&!DESCS[p.id])){
+  for(const p of PROPS.filter(p=>!p.unread&&p.created&&!DESCS[p.id]&&!NAMEDESCS[p.id])){
     try{
       const {b,top}=await blockAt(p.created);
       addDescriptions(await getLogs({address:DAO,topics:[CREATED,"0x"+h(p.id)]},
@@ -574,7 +599,7 @@ function renderProposals(){
 function card(p){
   {
     if(p.unread) return `<div class="prop"><span class="pid">#${p.id}</span> <span class="bad">could not read</span></div>`;
-    const meta=DESCS[p.id]||{};
+    const meta=DESCS[p.id]||(NAMEDESCS[p.id]?{desc:NAMEDESCS[p.id]}:{});
     const [cls,label]=statusOf(p);
     const T=DAOINFO.T;
     const pct=(x)=>x===undefined?0:Math.min(100,Number(x*10000n/T)/100);
@@ -598,7 +623,7 @@ function card(p){
         <span class="pill ${cls}">${label}</span>
         ${meta.who?`<span>${esc(meta.who)}</span>`:''}
         <span class="pval">${p.value===0n?"&mdash;":fmt(p.value)+" ETH"}</span></div>
-      <div class="pdesc">${meta.desc?esc(meta.desc):'<span class="dim">no description in logs</span>'}</div>
+      <div class="pdesc">${meta.desc?esc(meta.desc):`<span class="dim">${DESC_PENDING?"loading description…":"no description"}</span>`}</div>
       ${p.stuck?`<div class="pnote"><span class="warn">passed, but executing reverts &mdash; ${esc(p.stuck)}.
         It cannot be executed as written and stays open until vetoed.</span></div>`:''}
       <div class="pnote">calls ${eslink(p.target)} with <code>${p.data==="0x"?"empty calldata":esc(p.data.slice(0,42))+(p.data.length>42?"…":"")}</code></div>
@@ -872,10 +897,15 @@ async function connect(p){
 // Descriptions come from a history-wide log scan, the slowest read on the page; the
 // proposals render without them and pick them up when the scan lands.
 async function withDescriptions(){
+  DESC_PENDING=true;
   const d=loadDescriptions().then(()=>{ if(PROPS.length) renderProposals(); });
   try{ await loadProposals(); }catch(e){ $("plist").innerHTML=`<div class="bad">${esc(e.message)}</div>`; }
-  await d;
-  if(PROPS.length&&await fillDescriptions()) renderProposals();
+  const n=PROPS.length?loadNameDescriptions().then(f=>{ if(f) renderProposals(); })
+    .catch(e=>console.warn("name descriptions",e)):null;
+  await d; await n;
+  if(PROPS.length) await fillDescriptions();
+  DESC_PENDING=false;
+  if(PROPS.length) renderProposals();
 }
 // One refresh at a time; a call that lands mid-refresh (a tx confirming, a click) gets one
 // more full pass afterwards instead of a second, overlapping one painting older state last.
