@@ -232,9 +232,10 @@ const CV ="0x0000005260725eee99704957218d4045a50c2051";
 const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
             "https://mainnet.gateway.tenderly.co","https://eth-mainnet.public.blastapi.io",
             "https://rpc.mevblocker.io"];
-// eth_getLogs over the DAO's whole history. Each of these served the full range (address
-// filter, deploy block to latest) with a CORS header; mevblocker's paths share a backend
-// that intermittently answers "service temporarily unavailable", so it gets several goes.
+// eth_getLogs over the DAO's whole history. Tenderly serves the full range (address filter,
+// deploy block to latest) with a CORS header; mevblocker now caps a range at 10k blocks, so it
+// only serves fillDescriptions' narrow per-proposal lookups. Its paths share a backend that
+// intermittently answers "service temporarily unavailable", so it gets several goes.
 // Then the connected wallet's own node. drpc says 10k blocks but refuses 1k; flashbots
 // says 100k but refuses that too; publicnode, blastapi, 1rpc, blockrazor refuse outright.
 const LOG_RPCS=["https://mainnet.gateway.tenderly.co","https://rpc.mevblocker.io",
@@ -338,9 +339,12 @@ async function callMany(items,onProgress){
 // Logs get their own walk: most of the read pool refuses a history-wide range, and
 // bisecting against them never finishes. A failure here costs descriptions and the
 // names scan, never the proposals.
+// `to` may be the "latest" tag: a head number read from another node can lag, and a scan
+// capped there silently drops the newest proposals.
+const blockTag=b=>typeof b==="number"?"0x"+b.toString(16):b;
 async function logsAt(url,filter,from,to){
   const [r]=await post(url,[{jsonrpc:"2.0",id:1,method:"eth_getLogs",
-    params:[{...filter,fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]}],20000);
+    params:[{...filter,fromBlock:blockTag(from),toBlock:blockTag(to)}]}],20000);
   if(r.error) throw new Error(url+": "+r.error.message);
   if(!Array.isArray(r.result)) throw new Error(url+": no result");
   return r.result;
@@ -358,7 +362,7 @@ async function getLogs(filter,from,to){
   if(PROV){
     try{
       const r=await PROV.request({method:"eth_getLogs",params:[{...filter,
-        fromBlock:"0x"+from.toString(16),toBlock:"0x"+to.toString(16)}]});
+        fromBlock:blockTag(from),toBlock:blockTag(to)}]});
       if(Array.isArray(r)) return r;
     }catch(e){ last=e; }
   }
@@ -397,15 +401,42 @@ function daysToReach(C,W,T){
 
 /* ---------------- DAO state + proposals ---------------- */
 let DESCS={};   // id -> {desc, who, tx}   recovered from ProposalCreated logs
+function addDescriptions(ls){
+  for(const l of ls){
+    const id=Number(BigInt(l.topics[1])), raw=l.data.slice(2);
+    DESCS[id]={desc:readString(raw,3),who:readString(raw,4),tx:l.transactionHash};
+  }
+}
 async function loadDescriptions(){
-  try{
-    const latest=Number(BigInt(await one("eth_blockNumber",[])));
-    const ls=await getLogs({address:DAO,topics:[CREATED]},DAO_DEPLOY,latest);
-    for(const l of ls){
-      const id=Number(BigInt(l.topics[1])), raw=l.data.slice(2);
-      DESCS[id]={desc:readString(raw,3),who:readString(raw,4),tx:l.transactionHash};
-    }
-  }catch(e){ console.warn("description recovery failed",e); }
+  try{ addDescriptions(await getLogs({address:DAO,topics:[CREATED]},DAO_DEPLOY,"latest")); }
+  catch(e){ console.warn("description recovery failed",e); }
+}
+// The block nearest unix time `ts`, stepped in from the head on the 12s slot clock (missed
+// slots make one plain estimate drift), plus the head itself.
+async function blockAt(ts){
+  const head=await one("eth_getBlockByNumber",["latest",false]);
+  const top=Number(BigInt(head.number));
+  let b=top, t=Number(BigInt(head.timestamp));
+  for(let i=0;i<5&&Math.abs(t-ts)>60;i++){
+    b=Math.min(top,Math.max(DAO_DEPLOY,b-Math.round((t-ts)/12)));
+    t=Number(BigInt((await one("eth_getBlockByNumber",["0x"+b.toString(16),false])).timestamp));
+  }
+  return {b,top};
+}
+// Any proposal the history-wide scan missed (an endpoint that refuses the range, or answers
+// short) gets its own log lookup in a few hundred blocks around its creation time — a range
+// every log endpoint serves. True if that found anything new.
+async function fillDescriptions(){
+  let found=false;
+  for(const p of PROPS.filter(p=>!p.unread&&p.created&&!DESCS[p.id])){
+    try{
+      const {b,top}=await blockAt(p.created);
+      addDescriptions(await getLogs({address:DAO,topics:[CREATED,"0x"+h(p.id)]},
+        Math.max(DAO_DEPLOY,b-300),Math.min(top,b+300)));
+      found=found||!!DESCS[p.id];
+    }catch(e){ console.warn("description",p.id,e); }
+  }
+  return found;
 }
 // Several reads in one JSON-RPC batch to one endpoint, retried whole while any item failed —
 // ten separate requests were ten chances at a public endpoint's rate limit.
@@ -844,6 +875,7 @@ async function withDescriptions(){
   const d=loadDescriptions().then(()=>{ if(PROPS.length) renderProposals(); });
   try{ await loadProposals(); }catch(e){ $("plist").innerHTML=`<div class="bad">${esc(e.message)}</div>`; }
   await d;
+  if(PROPS.length&&await fillDescriptions()) renderProposals();
 }
 // One refresh at a time; a call that lands mid-refresh (a tx confirming, a click) gets one
 // more full pass afterwards instead of a second, overlapping one painting older state last.
