@@ -13,6 +13,7 @@ import {
   encodeRequestCall,
   pathToResource,
   pickHeaders,
+  pickSecurityHeaders,
   safeStatus,
 } from './onchain.js'
 
@@ -132,6 +133,29 @@ eq('repeated policies preserve all restrictions', pickHeaders([['cache-control',
 eq('invalid supplied policy fails closed', pickHeaders([['cache-control', 'no-store\r\nX-Evil: 1']]).cacheControl, 'no-store')
 eq('invalid policy cannot be overridden by a later field', pickHeaders([['cache-control', '\u0100'], ['cache-control', 'max-age=5']]).cacheControl, 'no-store, max-age=5')
 eq('quoted extensions preserve the supplied policy', pickHeaders([['cache-control', 'max-age=300, s-maxage=0, ext="https://example.com"']]).cacheControl, 'max-age=300, s-maxage=0, ext="https://example.com"')
+
+// --- 3b. opt-in hardening: restrict-only values pass, nothing else ----------
+
+const sec = (h) => JSON.stringify(pickSecurityHeaders(h))
+eq('hardening: the four a contract asks for (nosniff is always ours)', sec([
+  ['X-Frame-Options', 'DENY'], ['Content-Security-Policy', "frame-ancestors 'none'"],
+  ['Referrer-Policy', 'no-referrer'], ['X-Content-Type-Options', 'nosniff']]),
+  JSON.stringify([['x-frame-options', 'DENY'], ['content-security-policy', "frame-ancestors 'none'"], ['referrer-policy', 'no-referrer']]))
+eq('hardening: nothing asked, nothing added', sec([['content-type', 'text/html']]), '[]')
+eq('hardening: sameorigin is normalised', sec([['x-frame-options', 'sameorigin']]), JSON.stringify([['x-frame-options', 'SAMEORIGIN']]))
+eq('hardening: DENY wins over SAMEORIGIN, either order', sec([['x-frame-options', 'DENY'], ['x-frame-options', 'SAMEORIGIN']]), JSON.stringify([['x-frame-options', 'DENY']]))
+eq('hardening: DENY wins over SAMEORIGIN, other order', sec([['x-frame-options', 'SAMEORIGIN'], ['x-frame-options', 'DENY']]), JSON.stringify([['x-frame-options', 'DENY']]))
+eq("hardening: frame-ancestors 'none' wins over 'self'", sec([['content-security-policy', "frame-ancestors 'self'"], ['content-security-policy', "frame-ancestors 'none'"]]), JSON.stringify([['content-security-policy', "frame-ancestors 'none'"]]))
+eq('hardening: ALLOW-FROM is dropped', sec([['x-frame-options', 'ALLOW-FROM https://evil.example']]), '[]')
+eq("hardening: frame-ancestors 'self' passes", sec([['content-security-policy', "frame-ancestors 'self';"]]), JSON.stringify([['content-security-policy', "frame-ancestors 'self'"]]))
+eq('hardening: a full CSP stays dropped', sec([['content-security-policy', "default-src 'none'; frame-ancestors 'none'"]]), '[]')
+eq('hardening: frame-ancestors with a host list is dropped', sec([['content-security-policy', 'frame-ancestors https://evil.example']]), '[]')
+eq('hardening: frame-ancestors * is dropped', sec([['content-security-policy', 'frame-ancestors *']]), '[]')
+eq('hardening: a fallback list of strict policies passes', sec([['referrer-policy', 'same-origin, strict-origin']]), JSON.stringify([['referrer-policy', 'same-origin, strict-origin']]))
+eq('hardening: unsafe-url is dropped', sec([['referrer-policy', 'unsafe-url']]), '[]')
+eq('hardening: a list hiding a loose policy is dropped whole', sec([['referrer-policy', 'no-referrer, unsafe-url']]), '[]')
+eq('hardening: origin and no-referrer-when-downgrade are dropped', sec([['referrer-policy', 'origin'], ['referrer-policy', 'no-referrer-when-downgrade']]), '[]')
+eq('hardening: CRLF in a value is dropped', sec([['x-frame-options', 'DENY\r\nSet-Cookie: a=b']]), '[]')
 
 // --- 4. status clamping -----------------------------------------------------
 

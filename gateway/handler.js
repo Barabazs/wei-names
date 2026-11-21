@@ -1303,6 +1303,9 @@ async function serve(request, env, url, sub) {
       // doing.
       'x-wns-mode': resolved.mode,
     })
+    // Opt-in hardening the contract asked for, already narrowed to restrict-only
+    // values in onchain.js (pickSecurityHeaders). html() pages carry no headers.
+    for (const [k, v] of page.security || []) headers.set(k, v)
     const etag = page.status === 200 ? await pageEtag(page) : null
     if (etag) {
       headers.set('etag', etag)

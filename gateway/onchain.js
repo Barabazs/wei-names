@@ -24,7 +24,9 @@
 // it. Only `Content-Type` and `Cache-Control` survive (see pickHeaders): a page
 // must not be able to set a CSP, hand out cookies, or emit a `Location` through
 // this gateway. That is a ceiling on what we pass, not a judgement about any
-// particular contract.
+// particular contract. The one exception is opt-in hardening (pickSecurityHeaders):
+// anti-framing and referrer headers, each with only the values that take
+// something away from the page itself — never a full CSP, never a looser policy.
 
 import { ethCall } from './wns.js'
 
@@ -287,6 +289,44 @@ export function pickHeaders(headers) {
   }
 }
 
+// Opt-in hardening a contract may ask for. Each header passes only with a value
+// that restricts the page that receives it, so the worst a contract can do is
+// make its own page harder to embed or more private:
+//   X-Frame-Options          DENY | SAMEORIGIN (DENY wins when both appear)
+//   Content-Security-Policy  exactly `frame-ancestors 'none'` or `'self'` — the
+//                            directive a <meta> CSP can't carry. A full policy
+//                            stays dropped (Rule 4).
+//   Referrer-Policy          no-referrer | same-origin | strict-origin |
+//                            strict-origin-when-cross-origin, as one value or a
+//                            fallback list; never unsafe-url, origin, or the
+//                            no-referrer-when-downgrade that leaks paths.
+// X-Content-Type-Options isn't here: every gateway response already sends nosniff.
+// Returns [name, value] pairs in a fixed order; invalid fields are simply dropped.
+const FRAME_ANCESTORS = /^frame-ancestors\s+'(none|self)'\s*;?$/i
+const REFERRER_OK = new Set(['no-referrer', 'same-origin', 'strict-origin', 'strict-origin-when-cross-origin'])
+export function pickSecurityHeaders(headers) {
+  let xfo, csp, referrer
+  for (const [k, v] of headers) {
+    if (!safeHeaderValue(v)) continue
+    const name = String(k).trim().toLowerCase()
+    const val = v.trim()
+    if (name === 'x-frame-options' && /^(deny|sameorigin)$/i.test(val)) {
+      if (xfo !== 'DENY') xfo = val.toUpperCase()
+    } else if (name === 'content-security-policy') {
+      const m = FRAME_ANCESTORS.exec(val)
+      if (m && csp !== "frame-ancestors 'none'") csp = `frame-ancestors '${m[1].toLowerCase()}'`
+    } else if (name === 'referrer-policy') {
+      const list = val.split(',').map((t) => t.trim().toLowerCase())
+      if (list.every((t) => REFERRER_OK.has(t))) referrer = list.join(', ')
+    }
+  }
+  const out = []
+  if (xfo) out.push(['x-frame-options', xfo])
+  if (csp) out.push(['content-security-policy', csp])
+  if (referrer) out.push(['referrer-policy', referrer])
+  return out
+}
+
 // An HTTP status a gateway can actually emit. A contract returning something
 // outside the range isn't serving a page, so 502 is the honest answer.
 export function safeStatus(code) {
@@ -334,6 +374,7 @@ export async function fetchErc5219(address, pathname, search, opts) {
     body: decoded.body,
     contentType,
     cacheControl,
+    security: pickSecurityHeaders(decoded.headers),
   }
 }
 

@@ -44,7 +44,7 @@ Two interfaces, probed in this order:
 
 | Probe | Interface | What the gateway does |
 |---|---|---|
-| `resolveMode() == "5219"` | ERC-5219 `request(string[] resource, KeyValue[] params)` → `(uint16 statusCode, string body, KeyValue[] headers)` | Serve the body with the contract's status, `Content-Type` and `Cache-Control`. The request path becomes `resource` and the query becomes `params`, so deep paths and raw files (`…/tokenlist.json`) work. |
+| `resolveMode() == "5219"` | ERC-5219 `request(string[] resource, KeyValue[] params)` → `(uint16 statusCode, string body, KeyValue[] headers)` | Serve the body with the contract's status, `Content-Type` and `Cache-Control` (plus opt-in anti-framing and referrer headers, below). The request path becomes `resource` and the query becomes `params`, so deep paths and raw files (`…/tokenlist.json`) work. |
 | `resolveMode()` is `auto` / `manual` | ERC-4804 | Serving means translating a URL into calldata — a web3:// job. 302 / proxy to a web3:// HTTP gateway (`w3link.io`). |
 | `html()` answers | ERC-8244 | Serve the string as `text/html`. One document, no paths — served at every path, the same shape as an SPA fallback. |
 
@@ -137,6 +137,18 @@ Anyone can deploy a contract and point a name at it, so the header array is in
 the general case attacker-authored. A page must not be able to set its own CSP,
 hand out cookies, or emit a `Location` through this gateway. Responses are
 always sent with `X-Content-Type-Options: nosniff`.
+
+The one exception is opt-in hardening a contract can ask for, passed only with
+values that restrict its own page (`pickSecurityHeaders` in `onchain.js`):
+
+| header | passes only as |
+|---|---|
+| `X-Frame-Options` | `DENY` or `SAMEORIGIN` (DENY wins if both appear) |
+| `Content-Security-Policy` | exactly `frame-ancestors 'none'` or `frame-ancestors 'self'` — the one directive a `<meta>` CSP can't carry. Any other policy is still dropped. |
+| `Referrer-Policy` | `no-referrer`, `same-origin`, `strict-origin`, `strict-origin-when-cross-origin`, or a fallback list made only of these |
+
+So a page can make itself unframeable and keep its URL out of `Referer`, and
+nothing more. ERC-8244 `html()` returns no headers, so this is 5219-only.
 
 Status codes outside `200`–`599` become `502`; malformed ABI, an oversized body
 (cap: 8 MB) or a body the contract won't return is a `404`/`502`, never a guess.
