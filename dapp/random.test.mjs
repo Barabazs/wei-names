@@ -70,7 +70,7 @@ function liftConst(name) {
 
 const CONSTS = ['ENS_CONTROLLERS', 'ENS_NAME_REGISTERED', 'ENS_WINDOW_BLOCKS',
   'ENS_LOOKBACK_BLOCKS', 'RANDOM_BATCH', 'RANDOM_HEADS', 'RANDOM_TAILS',
-  'LOG_ENDPOINTS_FIRST'];
+  'LOG_ENDPOINTS_FIRST', 'LOG_REFUSERS', 'LOG_REQUEST_TIMEOUT'];
 
 const ALL = ['decodeEnsLabel', 'usableLabel', 'localLabels', 'shuffled',
   'anyEndpoint', 'ensLabelSample', 'screenAvailable', 'randomName'];
@@ -324,6 +324,15 @@ function eq(name, got, want) {
   eq('walk: no separate round-trip for the block number', calls.withRpc, 0);
   const f = calls.getLogs[0].filter;
   ok('walk: window placed off that endpoint\'s head', f.toBlock <= 20000000, JSON.stringify(f));
+}
+{
+  // An endpoint that never serves logs (blastapi, blockrazor, nodies) costs nothing.
+  const { run, ctx, calls } = sandbox();
+  const refuser = [...run('LOG_REFUSERS')][0];
+  ctx.RPC_ENDPOINTS = [refuser, 'https://a.example'];
+  ctx.__getLogs = async () => [];
+  await run('ensLabelSample()');
+  eq('walk: a known log refuser is never asked', calls.getLogs.map(g => g.url), ['https://a.example']);
 }
 {
   // Whoever answered stays first for the rest of the session.

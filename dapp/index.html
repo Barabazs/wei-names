@@ -1471,12 +1471,20 @@ const textEncoder = new TextEncoder();
 // for exactly this; the dapp had not. Vet on the call you depend on.
 // eth.merkle.io was dropped (as dao.html had already): it answers 429 to every request,
 // even the first, so it only ever cost a failover hop. mevblocker took its place.
+// blockrazor and nodies (added 2026-11-23) serve eth_call with CORS but refuse every
+// eth_getLogs, so they are read-only members (LOG_REFUSERS). buidlguidl rate-limits by
+// Origin — wei.domains gets a generous budget, other origins little — so it sits last.
+// Each visitor has their own rate-limit budget at every endpoint; more members means one
+// throttled visitor still finds a node that answers.
 const RPC_ENDPOINTS = [
   'https://ethereum-rpc.publicnode.com',
   'https://eth.drpc.org',
   'https://rpc.mevblocker.io',
   'https://mainnet.gateway.tenderly.co',
-  'https://eth-mainnet.public.blastapi.io'
+  'https://eth.blockrazor.xyz',
+  'https://eth-pokt.nodies.app',
+  'https://eth-mainnet.public.blastapi.io',
+  'https://mainnet.rpc.buidlguidl.com'
 ];
 const MAINNET = ethers.Network.from(1);
 let rpcProvider = null;   // FailoverProvider spanning every endpoint below
@@ -1493,14 +1501,20 @@ let _rpcGeneration = 0; // bumped by invalidateRpc(); a build from an older gene
 // trip, so FallbackProvider rotates to a healthy endpoint in ~100ms.
 const _providerPool = new Map();
 const RPC_REQUEST_TIMEOUT = 4000;
-function providerFor(url) {
-  let p = _providerPool.get(url);
+// Log queries get longer: a 9k-block eth_getLogs under load takes seconds, where an eth_call
+// that slow means a stuck node. Cached per url and timeout.
+const LOG_REQUEST_TIMEOUT = 15000;
+function providerFor(url, timeout = RPC_REQUEST_TIMEOUT) {
+  const key = url + '|' + timeout;
+  let p = _providerPool.get(key);
   if (!p) {
     const req = new ethers.FetchRequest(url);
-    req.timeout = RPC_REQUEST_TIMEOUT;
+    req.timeout = timeout;
     req.retryFunc = async () => false;
-    p = new ethers.JsonRpcProvider(req, MAINNET, { staticNetwork: true });
-    _providerPool.set(url, p);
+    // batchMaxCount 1: ethers batches concurrent calls by default, and drpc answers any
+    // batch over 3 with HTTP 400 — a whole batch of reads lost to one endpoint's policy.
+    p = new ethers.JsonRpcProvider(req, MAINNET, { staticNetwork: true, batchMaxCount: 1 });
+    _providerPool.set(key, p);
   }
   return p;
 }
@@ -2273,7 +2287,14 @@ function shuffled(arr) {
 //
 // Keeping this off the shared read provider is the point — every search goes through
 // that one, and it must not be reordered or stalled on this feature's behalf.
-const LOG_ENDPOINTS_FIRST = ['https://eth.drpc.org', 'https://mainnet.gateway.tenderly.co'];
+// Re-measured 2026-11-23 against an 800-block window: mevblocker, publicnode and tenderly
+// serve it (buidlguidl too, after them); drpc now caps eth_getLogs at 100 blocks, so it left
+// the head — it was a guaranteed refusal there. LOG_REFUSERS never serve a log query at
+// any range and are skipped outright rather than costing a failed round trip each.
+const LOG_ENDPOINTS_FIRST = ['https://rpc.mevblocker.io', 'https://ethereum-rpc.publicnode.com',
+  'https://mainnet.gateway.tenderly.co', 'https://mainnet.rpc.buidlguidl.com'];
+const LOG_REFUSERS = new Set(['https://eth-mainnet.public.blastapi.io', 'https://eth.blockrazor.xyz',
+  'https://eth-pokt.nodies.app']);
 let _logEndpoint = null;
 
 //
@@ -2285,11 +2306,11 @@ async function anyEndpoint(fn, prefer) {
   const list = overrides.length ? overrides : RPC_ENDPOINTS;
   const head = (prefer && prefer.length ? prefer : [_logEndpoint, ...LOG_ENDPOINTS_FIRST])
     .filter(u => u && list.includes(u));
-  const ordered = [...new Set([...head, ...list])];
+  const ordered = [...new Set([...head, ...list])].filter(u => !LOG_REFUSERS.has(u));
   let lastErr = null;
   for (const url of ordered) {
     try {
-      const out = await fn(providerFor(url));
+      const out = await fn(providerFor(url, LOG_REQUEST_TIMEOUT));
       _logEndpoint = url;
       return out;
     } catch (e) { lastErr = e; }
@@ -8189,11 +8210,13 @@ async function rollClaim(r) {
 const NAMES_DEPLOY_BLOCK = 24360470;      // NameNFT's first block
 const NAMES_TRANSFER = ethers.id('Transfer(address,address,uint256)');
 // Endpoints measured to serve eth_getLogs over the full range since deploy. Most
-// public nodes cap it far below (drpc 10k blocks, blastapi 10, mevblocker 10k,
-// publicnode refuses archive queries outright), and LOG_ENDPOINTS_FIRST is
-// ordered for the ENS draw's 800-block window instead — its head would cost this
-// scan a certain refusal before it got anywhere.
+// public nodes cap it far below (drpc 100 blocks, mevblocker / publicnode / buidlguidl
+// 10k, blastapi none), and LOG_ENDPOINTS_FIRST is ordered for the ENS draw's 800-block
+// window instead — its head would cost this scan a certain refusal before it got anywhere.
+// When tenderly can't be reached, namesLogs walks the range in NAMES_LOG_SPAN pieces,
+// which the 10k endpoints serve.
 const NAMES_LOG_FIRST = ['https://mainnet.gateway.tenderly.co'];
+const NAMES_LOG_SPAN = 9000;   // under the 10k-block caps, with room for the head to move
 const NAMES_GRACE = 90 * 86400;           // GRACE_PERIOD in NameNFT
 const NAMES_SOON = 30 * 86400;            // how early "expiring soon" starts
 const NAMES_CHUNK = 249;                  // subcalls per aggregate3, 3 per name
@@ -8229,16 +8252,76 @@ let _namesRollSeq = 0;     // invalidates an eligibility fetch the account or a 
 // block the scan reached, so the full-range walk is paid once per address per
 // browser and every later open only scans the blocks since. Nothing here is
 // trusted: ownerOf re-checks every id on the way to the screen.
-// One getLogs over the whole range; if the endpoint refuses it, walk it in spans.
-async function namesLogs(p, topic, from, to, span = 50000) {
-  const q = (a, b) => p.getLogs({ address: CONTRACT, topics: [NAMES_TRANSFER, null, topic], fromBlock: a, toBlock: b });
-  try { return await q(from, to); }
-  catch (e) {
-    if (to - from < span) throw e;
-    const out = [];
-    for (let a = from; a <= to; a += span) out.push(...await q(a, Math.min(to, a + span - 1)));
-    return out;
+// One getLogs over the whole range, on one endpoint. A range-capped endpoint refuses a
+// cold scan; namesChunked takes over when every endpoint has.
+async function namesLogs(p, topic, from, to) {
+  return p.getLogs({ address: CONTRACT, topics: [NAMES_TRANSFER, null, topic], fromBlock: from, toBlock: to });
+}
+
+// The range in NAMES_LOG_SPAN pieces, spread over every endpoint that serves logs, four in
+// flight. Each endpoint carries its own cooldown (doubling on an error, cleared by an
+// answer), so a throttled one rests while the others carry on, and spans already read are
+// kept — one bad answer never restarts the scan. An endpoint that says the range is too
+// large (drpc's 100-block cap) sits the rest of the scan out. buidlguidl takes one request
+// at a time: it 429s as soon as a visitor's requests overlap.
+const NAMES_LOG_CONC = { 'https://mainnet.rpc.buidlguidl.com': 1 };
+async function namesChunked(topic, from) {
+  const overrides = customRpcs();
+  const list = overrides.length ? overrides : RPC_ENDPOINTS;
+  const pool = [...new Set([...LOG_ENDPOINTS_FIRST.filter(u => list.includes(u)), ...list])]
+    .filter(u => !LOG_REFUSERS.has(u) && !(NAMES_LOG_FIRST.includes(u) && !overrides.length));
+  if (!pool.length) throw new Error('No endpoint serves logs');
+  const rest = new Map(), penalty = new Map(), busy = new Map(), out = new Set();
+  const streak = new Map(), good = new Set();   // consecutive failures; hosts that have answered
+  let head = null, lastErr = null, served = false;
+  for (const u of pool) {
+    try { head = await providerFor(u, LOG_REQUEST_TIMEOUT).getBlockNumber(); break; } catch (e) { lastErr = e; }
   }
+  if (head === null) throw lastErr;
+  if (head < from) return { head, logs: [] };
+  const spans = [];
+  for (let a = from; a <= head; a += NAMES_LOG_SPAN) spans.push([a, Math.min(head, a + NAMES_LOG_SPAN - 1)]);
+  const got = new Array(spans.length);
+  const pick = skew => {
+    const now = Date.now(); let best = null, wait = Infinity;
+    for (let j = 0; j < pool.length; j++) {
+      const u = pool[(j + skew) % pool.length];
+      if (out.has(u)) continue;
+      let w = Math.max(0, (rest.get(u) || 0) - now);
+      if ((busy.get(u) || 0) >= (NAMES_LOG_CONC[u] || 4)) w = Math.max(w, 200);
+      if (w < wait) { wait = w; best = u; }
+    }
+    return [best, wait];
+  };
+  let next = 0, failed = null;
+  await Promise.all([0, 1, 2, 3].map(async k => {
+    while (next < spans.length && !failed) {
+      const i = next++;
+      for (let t = 0; got[i] === undefined && !failed;) {
+        const [u, wait] = pick(i + k + t);
+        if (!u) { failed = lastErr || new Error('No endpoint serves logs'); break; }
+        if (wait) { await new Promise(r => setTimeout(r, wait)); continue; }
+        busy.set(u, (busy.get(u) || 0) + 1); t++;
+        try {
+          got[i] = await namesLogs(providerFor(u, LOG_REQUEST_TIMEOUT), topic, spans[i][0], spans[i][1]);
+          penalty.delete(u); streak.delete(u); good.add(u); served = true;
+        } catch (e) {
+          lastErr = e;
+          const n = (streak.get(u) || 0) + 1; streak.set(u, n);
+          // A range refusal, or three straight failures from a host that never answered
+          // (a 403/400 for this visitor), takes it out of this scan.
+          if (/range|limit|too large|exceed|not supported/i.test(String(e && e.message)) || (n >= 3 && !good.has(u))) out.add(u);
+          const ms = Math.min(16000, (penalty.get(u) || 500) * 2);
+          penalty.set(u, ms); rest.set(u, Date.now() + ms);
+          // Throttling mid-scan is ridden out; every endpoint failing before any span
+          // landed is an outage, and the caller's stale cache beats a minute of retries.
+          if (t >= 12 || pool.every(p => out.has(p)) || (!served && pool.every(p => out.has(p) || penalty.has(p)))) failed = e;
+        } finally { busy.set(u, busy.get(u) - 1); }
+      }
+    }
+  }));
+  if (failed) throw failed;
+  return { head, logs: got.flat() };
 }
 
 async function namesReceived(addr, force) {
@@ -8257,13 +8340,18 @@ async function namesReceived(addr, force) {
   const topic = '0x' + addr.toLowerCase().replace(/^0x/, '').padStart(64, '0');
   let head, logs;
   try {
-    ({ head, logs } = await anyEndpoint(async p => {
-      const at = await p.getBlockNumber();
-      // An endpoint a few blocks behind the one that wrote the cache would ask for
-      // a backwards range and be told so; there is simply nothing new to read.
-      if (at < from) return { head: at, logs: [] };
-      return { head: at, logs: await namesLogs(p, topic, from, at) };
-    }, NAMES_LOG_FIRST));
+    try {
+      ({ head, logs } = await anyEndpoint(async p => {
+        const at = await p.getBlockNumber();
+        // An endpoint a few blocks behind the one that wrote the cache would ask for
+        // a backwards range and be told so; there is simply nothing new to read.
+        if (at < from) return { head: at, logs: [] };
+        return { head: at, logs: await namesLogs(p, topic, from, at) };
+      }, NAMES_LOG_FIRST));
+    } catch (whole) {
+      // Nobody took the range whole (tenderly unreachable, everyone else capped).
+      ({ head, logs } = await namesChunked(topic, from));
+    }
   } catch (e) {
     // No endpoint would serve the query. A cached list is stale but real, and
     // every id in it is about to be re-read from chain anyway — showing it beats

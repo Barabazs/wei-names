@@ -491,6 +491,13 @@ let _rpcProvider = null;
 window._resetWalletRpc = () => { _rpcProvider = null; };
 function getRpcProvider() {
   if (_rpcProvider) return _rpcProvider;
+  // The page's own read provider: the same endpoint list and saved wns_rpc override,
+  // one endpoint at a time with failover. ethers' FallbackProvider below syncs by asking
+  // every endpoint at once, batches (drpc 400s a batch over 3) and retries a 429 with
+  // backoff — a burst of errors at every node for one display name.
+  if (typeof buildRpcProvider === 'function') {
+    try { return (_rpcProvider = buildRpcProvider()); } catch (e) {}
+  }
   // Honor the same explicitly saved RPC as the main app (wns_rpc) and
   // fail over across the public endpoints, so a single throttled node (publicnode is
   // the most rate-limited) can't silently break reverse resolution of the display name.

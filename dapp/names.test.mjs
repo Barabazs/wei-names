@@ -72,10 +72,10 @@ function liftConst(name) {
 }
 
 const CONSTS = ['NAMES_DEPLOY_BLOCK', 'NAMES_TRANSFER', 'NAMES_LOG_FIRST', 'NAMES_GRACE',
-  'NAMES_SOON', 'NAMES_CHUNK', 'NAMES_RANK', 'LOG_ENDPOINTS_FIRST', 'NAMES_MAX_RENEWALS',
+  'NAMES_SOON', 'NAMES_CHUNK', 'NAMES_RANK', 'LOG_ENDPOINTS_FIRST', 'LOG_REFUSERS', 'LOG_REQUEST_TIMEOUT', 'NAMES_LOG_SPAN', 'NAMES_LOG_CONC', 'NAMES_MAX_RENEWALS',
   'MAX_TERMS', 'NAMES_MAX_ROLL_ENTRIES', 'LOTTERY', 'LOTTERY_ABI', 'rollIface'];
 
-const ALL = ['anyEndpoint', 'aggregate3Chunked', 'nameForInput', 'namesLogs', 'namesReceived', 'namesRead', 'namesRoot', 'namesRootExpiry',
+const ALL = ['anyEndpoint', 'aggregate3Chunked', 'nameForInput', 'namesLogs', 'namesChunked', 'namesReceived', 'namesRead', 'namesRoot', 'namesRootExpiry',
   'namesClassify', 'namesOrder', 'namesScan', 'namesError', 'namesDate', 'namesDays',
   'namesWhen', 'namesRow', 'namesPick', 'namesFooter', 'namesRender', 'namesPanelOpen',
   'namesSetToggle', 'toggleNames', 'namesOnConnect', 'namesOnDisconnect',
@@ -408,6 +408,31 @@ const logFor = ids => ids.map(id => ({ topics: [null, null, null, id] }));
   eq('scan: the block it reached, less a reorg margin, is cached with the ids',
     JSON.parse(s.store.get(KEY)), { head: 25900000 - 64, ids: [ID('a'), ID('b')] });
   eq('scan: nothing stale about a live scan', out.stale, false);
+}
+{
+  // Tenderly unreachable (a reset, as some visitors get): the next endpoint refuses the
+  // whole range but serves 10k-block windows, so the scan walks it in spans — none over
+  // the cap, all of them covered, a throttled span asked again rather than failing the scan.
+  let flaked = false;
+  const s = sandbox({
+    getLogs: async (u, f) => {
+      if (u === TENDERLY) throw new Error('net::ERR_CONNECTION_RESET');
+      if (f.toBlock - f.fromBlock + 1 > 10000) throw new Error('range exceeds limit of 10000');
+      if (!flaked && f.fromBlock > 25000000) { flaked = true; throw new Error('429 Too Many Requests'); }
+      return f.fromBlock === 24360470 ? logFor([ID('a')]) : f.toBlock === 25900000 ? logFor([ID('b')]) : [];
+    },
+  });
+  const out = await s.run(`namesReceived(${JSON.stringify(ME)}, false)`);
+  const spans = s.calls.getLogs.filter(g => g.url !== TENDERLY && g.filter.toBlock - g.filter.fromBlock < 10000);
+  eq('chunked scan: ids from the first and last spans', out.ids, [ID('a'), ID('b')]);
+  eq('chunked scan: no span over the 10k cap', spans.every(g => g.filter.toBlock - g.filter.fromBlock + 1 <= 9000), true);
+  const covered = new Set(spans.map(g => g.filter.fromBlock));
+  let gap = false;
+  for (let a = 24360470; a <= 25900000; a += 9000) if (!covered.has(a)) gap = true;
+  eq('chunked scan: every span from deploy to head was read', gap, false);
+  eq('chunked scan: the throttled span was retried', flaked, true);
+  eq('chunked scan: a live result, not stale', out.stale, false);
+  eq('chunked scan: spread over more than one endpoint', new Set(spans.map(g => g.url)).size > 1, true);
 }
 {
   // The expensive walk is paid once: the next open only asks for what is new.
