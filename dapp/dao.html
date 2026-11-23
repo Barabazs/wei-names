@@ -229,9 +229,11 @@ const NFT="0x0000000000696760e15f265e828db644a0c242eb";
 const CV ="0x0000005260725eee99704957218d4045a50c2051";
 // Every entry vetted on an eth_call with Origin: https://wei.domains. merkle is out:
 // it 429s without CORS headers, so the browser reports a preflight failure per call.
+// blockrazor and nodies (2026-11-23): eth_call + CORS OK, no eth_getLogs at all. Rate limits
+// are per visitor, so every extra member is one more node a throttled visitor can still reach.
 const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
             "https://mainnet.gateway.tenderly.co","https://eth-mainnet.public.blastapi.io",
-            "https://rpc.mevblocker.io"];
+            "https://rpc.mevblocker.io","https://eth.blockrazor.xyz","https://eth-pokt.nodies.app"];
 // eth_getLogs. Only tenderly serves a history-wide range (address filter, deploy block to
 // latest) with a CORS header, and it rate-limits or resets connections for some visitors.
 // mevblocker and buidlguidl serve up to 10k blocks a call (buidlguidl strictly), so they take
@@ -239,7 +241,9 @@ const RPCS=["https://eth.drpc.org","https://ethereum-rpc.publicnode.com",
 // blastapi, 1rpc, blockrazor refuse. (rpc.buidlguidl.com is a landing page, not the RPC.)
 // buidlguidl stays out of RPCS: its per-visitor budget is small, and log chunks need all of it.
 const WIDE_LOG_RPCS=["https://mainnet.gateway.tenderly.co"];
-const CHUNK_LOG_RPCS=["https://rpc.mevblocker.io","https://mainnet.rpc.buidlguidl.com"];
+// publicnode joined 2026-11-23: it now serves 9k-block ranges (it used to refuse logs).
+const CHUNK_LOG_RPCS=["https://rpc.mevblocker.io","https://ethereum-rpc.publicnode.com",
+                      "https://mainnet.rpc.buidlguidl.com"];
 const LOG_CHUNK=9000;   // under both 10k caps, with room for the head to move mid-scan
 const DEPLOY=24360470;
 const TRANSFER="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -275,7 +279,10 @@ let cursor=0; const benched=new Map();
 // drpc's free tier answers a JSON-RPC batch of more than 3 with HTTP 400 ("Batch of more than 3
 // requests are not allowed"), so callMany's batches of 25 spent a round trip there, failed and
 // benched it, on every page load. A batch only goes to an endpoint that takes its size.
-const BATCH_CAP={"https://eth.drpc.org":3};
+// Largest JSON-RPC batch each endpoint answers in full, measured 2026-11-23: drpc 400s past
+// 3, tenderly 429s past 5, nodies rejects past 10, blockrazor drops calls past 20.
+const BATCH_CAP={"https://eth.drpc.org":3,"https://mainnet.gateway.tenderly.co":5,
+                 "https://eth-pokt.nodies.app":10,"https://eth.blockrazor.xyz":20};
 const takes=(u,n)=>!(BATCH_CAP[u]<n);
 function nextRpc(n=1){
   const now=Date.now();
@@ -354,14 +361,22 @@ async function logsAt(url,filter,from,to){
 // whichever host is free soonest and wait when every one is resting, so the last endpoint
 // standing throttles a scan rather than failing it.
 const LOG_REST=new Map(), LOG_PENALTY=new Map(), LOG_BUSY=new Map();
+const LOG_STREAK=new Map(), LOG_GOOD=new Set();   // consecutive failures; hosts that have answered
 // Requests in flight per host. buidlguidl serves chunks back to back all day but 429s as soon
 // as a few overlap from one visitor, so it takes one at a time.
 const LOG_CONC={"https://mainnet.rpc.buidlguidl.com":1};
+// A range refusal rests a host ten minutes (it will refuse every piece the same way), and
+// three straight failures from a host that hasn't answered once — a 403 or 400 aimed at
+// this visitor — rest it a minute, so neither keeps eating the retries of every piece.
 function logFailed(u,e){
-  const net=/failed to fetch|networkerror|load failed|abort|timeout/i.test(String(e&&e.message||e));
-  const ms=net?60000:Math.min(16000,(LOG_PENALTY.get(u)||500)*2);
+  const m=String(e&&e.message||e);
+  const net=/failed to fetch|networkerror|load failed|abort|timeout/i.test(m);
+  const n=(LOG_STREAK.get(u)||0)+1; LOG_STREAK.set(u,n);
+  const ms=/range|limit|too large|exceed|not supported/i.test(m)?600000
+    :(net||(n>=3&&!LOG_GOOD.has(u)))?60000:Math.min(16000,(LOG_PENALTY.get(u)||500)*2);
   LOG_PENALTY.set(u,ms); LOG_REST.set(u,Date.now()+ms);
 }
+function logServed(u){ LOG_PENALTY.delete(u); LOG_STREAK.delete(u); LOG_GOOD.add(u); }
 function pickLogHost(list,skew){
   const now=Date.now(); let best=list[0], wait=Infinity;
   for(let j=0;j<list.length;j++){
@@ -376,9 +391,12 @@ async function logsFrom(list,filter,from,to,tries=8,skew=0){
   let last;
   for(let t=0;t<tries;){
     const [u,wait]=pickLogHost(list,skew+t);
+    // Every host resting a minute or more is an outage, not throttling: fail now, so the
+    // caller falls back instead of the page sitting on "loading" for minutes.
+    if(wait>20000) throw last||new Error("every log endpoint is resting");
     if(wait){ await sleep(wait); continue; }   // then pick again: another host may be free first
     LOG_BUSY.set(u,(LOG_BUSY.get(u)||0)+1); t++;
-    try{ const r=await logsAt(u,filter,from,to); LOG_PENALTY.delete(u); return r; }
+    try{ const r=await logsAt(u,filter,from,to); logServed(u); return r; }
     catch(e){ last=e; logFailed(u,e); }
     finally{ LOG_BUSY.set(u,LOG_BUSY.get(u)-1); }
   }
@@ -422,7 +440,7 @@ async function getLogs(filter,from,to,chunk=true){
     catch(e){ if(!PROV) throw e; return await logsWallet(filter,from,to); }
   }
   for(const u of WIDE_LOG_RPCS){
-    try{ const r=await logsAt(u,filter,from,to); LOG_PENALTY.delete(u); return r; }
+    try{ const r=await logsAt(u,filter,from,to); logServed(u); return r; }
     catch(e){ logFailed(u,e); }
   }
   if(PROV){ try{ return await logsWallet(filter,from,to); }catch(_){} }
