@@ -1558,9 +1558,9 @@ res = await swarmGet('sw343.wei.limo/dead', {}, navigate)
 eq('swarm: unreachable is a 502', res.status, 502)
 eq('swarm: and no browser-gateway redirect', res.headers.get('location'), null)
 
-// Range is never forwarded to Swarm: the public download gateway caches a 206
-// under the plain URL, so one ranged request (a video seek) would truncate that
-// file for every visitor after it, here and at the upstream.
+// Range is never forwarded to Swarm: the public download gateway can cache a 206
+// under the plain URL, so one ranged request (a video seek) could truncate that
+// file for later visitors, here and at the upstream.
 routes = swarmName(346)
 let sent = []
 proxyResponse = async (u, init) => {

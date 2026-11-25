@@ -227,12 +227,13 @@ Redirects are `no-store` for the same reason. What does not apply: the browser g
 service worker can't fetch Swarm), `_redirects` (an IPFS gateway convention),
 and query strings (Bee ignores them, so they are dropped upstream). Only unencrypted 32-byte references are served.
 
-A visitor's `Range` is not forwarded either: the download gateway caches a 206
-under the plain URL, so one ranged request (a video seek) would serve that
-fragment to every later visitor, here and at the upstream. Swarm files arrive
-whole, without `accept-ranges`. A 206 that comes back anyway is a fragment
-someone else left in that cache, and is asked for once more with
-`Pragma: no-cache`, the only header that gets past it.
+A visitor's `Range` is not forwarded either: the download gateway can cache a
+206 under the plain URL, so after one ranged request (a video seek) later plain
+requests for that path may get the fragment. Measured, a fresh connection got it
+some of the time and a reused one, which is what this gateway holds, every time.
+Swarm files arrive whole, without `accept-ranges`. A 206 that comes back anyway
+is a fragment someone else left in that cache, and is asked for once more with
+`Pragma: no-cache`, which got past it where `Cache-Control: no-cache` didn't.
 
 The cost: every Swarm page load is bandwidth through this gateway, in either
 mode. And the default upstream is one public service run by the Swarm

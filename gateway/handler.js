@@ -1515,9 +1515,10 @@ async function serve(request, env, url, sub) {
     const negotiated = /application\/(vnd\.ipld\.|x-tar|json|cbor)/i.test(accept)
     // A byte range is a different response from the whole file, so it is
     // forwarded (media seeking needs it) and never held or shared.
-    // Not to Swarm: the public download gateway caches a 206 under the plain
-    // URL, so one ranged request would serve that fragment to every later
-    // visitor (of this gateway and of the upstream). Swarm is fetched whole.
+    // Not to Swarm: the public download gateway can cache a 206 under the plain
+    // URL, so after one ranged request later plain requests may get that
+    // fragment, and over a reused connection, as here, they all did. Swarm is
+    // fetched whole.
     const range = resolved.kind === 'swarm' ? null : request.headers.get('range')
     const ifNoneMatch = request.headers.get('if-none-match')
     const proxyKey =
@@ -1624,8 +1625,8 @@ async function serve(request, env, url, sub) {
           res = await ask(upstreamHeaders)
           // Swarm is never asked for a range, so a 206 is someone else's ranged
           // request that the public download gateway cached under the plain URL.
-          // Ask once more past its cache, as a browser's hard reload does. Only
-          // Pragma gets past it (measured: Cache-Control alone still hits the 206).
+          // Ask once more past its cache, as a browser's hard reload does. Pragma
+          // is what got past it when measured; Cache-Control alone still hit the 206.
           if (res.status === 206 && resolved.kind === 'swarm') {
             cancelBody(res)
             res = await ask({ ...upstreamHeaders, 'cache-control': 'no-cache', pragma: 'no-cache' })
