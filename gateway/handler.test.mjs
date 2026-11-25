@@ -1558,6 +1558,33 @@ res = await swarmGet('sw343.wei.limo/dead', {}, navigate)
 eq('swarm: unreachable is a 502', res.status, 502)
 eq('swarm: and no browser-gateway redirect', res.headers.get('location'), null)
 
+// Range is never forwarded to Swarm: the public download gateway caches a 206
+// under the plain URL, so one ranged request (a video seek) would truncate that
+// file for every visitor after it, here and at the upstream.
+routes = swarmName(346)
+let sent = []
+proxyResponse = async (u, init) => {
+  sent.push(init.headers)
+  return new Response('whole file', { status: 200, headers: { 'content-type': 'video/mp4', 'accept-ranges': 'bytes' } })
+}
+res = await swarmGet('sw346.wei.limo/clip.mp4', {}, { headers: { range: 'bytes=0-0' } })
+eq('swarm range: not forwarded upstream', sent.map((h) => h.range ?? null), [null])
+eq('swarm range: the whole file is served', [res.status, await res.text()], [200, 'whole file'])
+eq('swarm range: no accept-ranges promised', res.headers.get('accept-ranges'), null)
+// A 206 nobody asked for is a fragment someone else left in the upstream cache:
+// asked once more past it, as a hard reload does.
+sent = []
+proxyResponse = async (u, init) => {
+  sent.push(init.headers)
+  return init.headers.pragma === 'no-cache'
+    ? new Response('whole page', { status: 200, headers: { 'content-type': 'text/html' } })
+    : new Response('w', { status: 206, headers: { 'content-range': 'bytes 0-0/10' } })
+}
+res = await swarmGet('sw346.wei.limo/', {}, navigate)
+eq('swarm stale 206: asked again past the cache', sent.map((h) => h.pragma ?? null), [null, 'no-cache'])
+eq('swarm stale 206: the whole page is served', [res.status, await res.text()], [200, 'whole page'])
+eq('swarm stale 206: no content-range', res.headers.get('content-range'), null)
+
 // A truncated reference is not content.
 routes = swarmName(344, 'e40101fa011b20' + SWARM_REF.slice(0, 62))
 proxyResponse = async (u) => { throw new Error('unexpected fetch ' + u) }

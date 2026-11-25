@@ -1515,7 +1515,10 @@ async function serve(request, env, url, sub) {
     const negotiated = /application\/(vnd\.ipld\.|x-tar|json|cbor)/i.test(accept)
     // A byte range is a different response from the whole file, so it is
     // forwarded (media seeking needs it) and never held or shared.
-    const range = request.headers.get('range')
+    // Not to Swarm: the public download gateway caches a 206 under the plain
+    // URL, so one ranged request would serve that fragment to every later
+    // visitor (of this gateway and of the upstream). Swarm is fetched whole.
+    const range = resolved.kind === 'swarm' ? null : request.headers.get('range')
     const ifNoneMatch = request.headers.get('if-none-match')
     const proxyKey =
       resolved.kind === 'ipfs' && request.method === 'GET' && !negotiated && !range
@@ -1598,23 +1601,34 @@ async function serve(request, env, url, sub) {
       const attempts = byHealth(targets, now)
       for (let i = 0; i < attempts.length; i++) {
         const candidate = attempts[i]
-        let res
-        try {
+        const ask = async (headers) => {
           await proxyAcquire()
           // The timer is cleared the moment headers land, so the abort covers
           // connect-and-hang and nothing else — a large body still streams.
           const controller = new AbortController()
           const timer = setTimeout(() => controller.abort(), proxyTimeoutMs)
           try {
-            res = await fetch(candidate.url, {
+            return await fetch(candidate.url, {
               method: request.method,
-              headers: upstreamHeaders,
+              headers,
               redirect: 'manual',
               signal: controller.signal,
             })
           } finally {
             clearTimeout(timer)
             proxyRelease()
+          }
+        }
+        let res
+        try {
+          res = await ask(upstreamHeaders)
+          // Swarm is never asked for a range, so a 206 is someone else's ranged
+          // request that the public download gateway cached under the plain URL.
+          // Ask once more past its cache, as a browser's hard reload does. Only
+          // Pragma gets past it (measured: Cache-Control alone still hits the 206).
+          if (res.status === 206 && resolved.kind === 'swarm') {
+            cancelBody(res)
+            res = await ask({ ...upstreamHeaders, 'cache-control': 'no-cache', pragma: 'no-cache' })
           }
         } catch (e) {
           lastError = e
@@ -1793,9 +1807,10 @@ async function serve(request, env, url, sub) {
       // `?download=`/`?filename=`, which IPFS_QUERY_KEYS keeps for exactly that.
       //
       // Not for Swarm: SWARM_GATEWAY marks every response an attachment, which
-      // would make a browser download each page instead of rendering it.
-      const PASS = ['content-type', 'etag', 'last-modified', 'content-range', 'accept-ranges']
-      if (resolved.kind !== 'swarm') PASS.push('content-disposition')
+      // would make a browser download each page instead of rendering it; and
+      // since no Range is forwarded there, no accept-ranges is promised either.
+      const PASS = ['content-type', 'etag', 'last-modified', 'content-range']
+      if (resolved.kind !== 'swarm') PASS.push('accept-ranges', 'content-disposition')
       const headers = new Headers()
       for (const h of PASS) {
         const v = upstream.headers.get(h)

@@ -269,7 +269,7 @@ Standard key-value text records via `setText` / `text`. Common keys: `avatar`, `
 
 ### Contenthash
 
-`setContenthash` / `contenthash` for IPFS/Swarm/etc. content addressing. Used by the gateway (`wei.limo`) to serve websites: IPFS (`0xe301…`), IPNS (`0xe501…`) and Swarm (`0xe40101fa011b20` + 32-byte reference, set in the dapp as `bzz://<hash>`).
+`setContenthash` / `contenthash` for IPFS/Swarm/etc. content addressing. Used by the gateway (`wei.domains`) to serve websites.
 
 ---
 
